@@ -23,6 +23,7 @@
   var rotateTimer = null;
   var fadeTimer = null;
   var loaded = false;
+  var _loadError = false;
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -44,7 +45,7 @@
           loaded = true;
         }
       })
-      .catch(function (e) { console.warn('[news] fetch failed:', e.message); });
+      .catch(function (e) { _loadError = true; console.warn('[news] fetch failed:', e.message); });
   }
 
   /* ---------- Center HUD tile ---------- */
@@ -109,7 +110,10 @@
       dateEl.textContent = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
     }
     if (!headlines.length) {
-      list.innerHTML = '<li class="news-empty">News unavailable — check your internet connection.</li>';
+      var emptyMsg = _loadError
+        ? "Couldn't reach the news feed — try again later."
+        : 'No headlines right now.';
+      list.innerHTML = '<li class="news-empty">' + emptyMsg + '</li>';
       return;
     }
     // One top story per category, in a fixed order, so the widget reads as
@@ -147,7 +151,7 @@
     setInterval(refresh, 30 * 60 * 1000);
   }
 
-  window.NewsTicker = { refresh: refresh, isLoaded: function () { return loaded; } };
+  window.NewsTicker = { refresh: refresh, isLoaded: function () { return loaded; }, isError: function () { return _loadError; } };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', start);

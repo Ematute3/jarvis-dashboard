@@ -15,6 +15,39 @@
   if (!listEl || !formEl) return;
 
   var STEP = 10;
+  var inFlight = new Set();
+  var submitInFlight = false;
+  var statusTimer = null;
+
+  // Status element — injected next to the form for inline user feedback.
+  var statusEl = document.createElement('div');
+  statusEl.className = 'goal-status';
+  statusEl.setAttribute('role', 'status');
+  statusEl.setAttribute('aria-live', 'polite');
+  if (formEl.parentNode) {
+    formEl.parentNode.insertBefore(statusEl, formEl.nextSibling);
+  } else {
+    formEl.appendChild(statusEl);
+  }
+
+  function setStatus(msg, kind) {
+    if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
+    if (!msg) {
+      statusEl.textContent = '';
+      statusEl.className = 'goal-status';
+      return;
+    }
+    statusEl.textContent = msg;
+    statusEl.className = 'goal-status' + (kind ? ' goal-status--' + kind : '');
+    statusTimer = setTimeout(function () {
+      statusEl.textContent = '';
+      statusEl.className = 'goal-status';
+      statusTimer = null;
+    }, 1500);
+  }
+
+  function setError(msg) { setStatus(msg, 'error'); }
+  function setSuccess(msg) { setStatus(msg, 'success'); }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -28,7 +61,14 @@
       credentials: 'same-origin',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
-    }).then(function (r) { return r.json(); });
+    }).then(function (r) {
+      if (!r.ok) {
+        var err = new Error('Request failed: ' + r.status);
+        err.status = r.status;
+        throw err;
+      }
+      return r.json();
+    });
   }
 
   function render(goals) {
@@ -60,29 +100,59 @@
   formEl.addEventListener('submit', function (e) {
     e.preventDefault();
     var name = inputEl.value.trim();
-    if (!name) return;
-    api('POST', '/api/goals', { name: name }).then(function (res) {
-      if (res.ok) { inputEl.value = ''; render(res.goals); }
-    });
+    if (!name) {
+      setError('Type a goal first.');
+      inputEl.focus();
+      return;
+    }
+    if (submitInFlight) return;
+    submitInFlight = true;
+
+    var submitBtn = formEl.querySelector('button[type="submit"], button:not([type])');
+    if (submitBtn) submitBtn.disabled = true;
+
+    api('POST', '/api/goals', { name: name })
+      .then(function (res) {
+        if (res.ok) {
+          inputEl.value = '';
+          render(res.goals);
+          setSuccess('Added.');
+        } else {
+          setError("Couldn't save — retry.");
+        }
+      })
+      .catch(function () {
+        setError("Couldn't save — retry.");
+      })
+      .then(function () {
+        submitInFlight = false;
+        if (submitBtn) submitBtn.disabled = false;
+      });
   });
 
   listEl.addEventListener('click', function (e) {
     var item = e.target.closest('.goal-item');
     if (!item) return;
     var id = item.dataset.id;
+    if (!id || inFlight.has(id)) return;
+
     if (e.target.closest('.goal-del')) {
-      api('DELETE', '/api/goals/' + encodeURIComponent(id)).then(function (res) {
-        if (res.ok) render(res.goals);
-      });
+      inFlight.add(id);
+      api('DELETE', '/api/goals/' + encodeURIComponent(id))
+        .then(function (res) { if (res.ok) render(res.goals); })
+        .catch(function () { setError("Couldn't save — retry."); })
+        .then(function () { inFlight.delete(id); });
       return;
     }
     var step = e.target.closest('.goal-step');
     if (step) {
       var current = parseInt(item.querySelector('.goal-pct').textContent, 10) || 0;
       var next = Math.max(0, Math.min(100, current + parseInt(step.dataset.delta, 10)));
-      api('POST', '/api/goals/' + encodeURIComponent(id), { progress: next }).then(function (res) {
-        if (res.ok) render(res.goals);
-      });
+      inFlight.add(id);
+      api('POST', '/api/goals/' + encodeURIComponent(id), { progress: next })
+        .then(function (res) { if (res.ok) render(res.goals); })
+        .catch(function () { setError("Couldn't save — retry."); })
+        .then(function () { inFlight.delete(id); });
     }
   });
 

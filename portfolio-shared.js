@@ -21,6 +21,7 @@
   var _holdings = [];
   var _quotes = [];
   var _fetchedAt = null;
+  var _loadError = false;
   var _onUpdate = [];
 
   function fetchJSON(url) {
@@ -110,10 +111,12 @@
       _holdings = Array.isArray(holdingsData) ? holdingsData : (holdingsData.holdings || []);
       _quotes   = pricesData.quotes || [];
       _fetchedAt = pricesData.fetched_at || null;
+      _loadError = false;
       _notify();
       return enrichedHoldings();
     }).catch(function (err) {
-      console.warn('[PortfolioData] load failed, using empty state:', err.message);
+      _loadError = true;
+      console.warn('[PortfolioData] load failed:', err && err.message);
       return [];
     });
   }
@@ -126,8 +129,12 @@
       fetchJSON('/api/prices').then(function (pricesData) {
         _quotes = pricesData.quotes || [];
         _fetchedAt = pricesData.fetched_at || null;
+        _loadError = false;
         _notify();
-      }).catch(function () { /* network blip — keep last known */ });
+      }).catch(function (err) {
+        _loadError = true;
+        console.warn('[PortfolioData] price poll failed:', err && err.message);
+      });
     }, Math.max(10, typeof intervalSec === 'number' ? intervalSec : 30) * 1000);
   }
 
@@ -159,6 +166,7 @@
     totalDayChangePct: totalDayChangePct,
     formatUSD: formatUSD,
     get fetchedAt() { return _fetchedAt; },
+    get loadError() { return _loadError; },
   };
 
   // Auto-load on DOMContentLoaded so the value is correct on first paint.

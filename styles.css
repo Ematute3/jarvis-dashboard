@@ -321,6 +321,10 @@ body.boot .status-strip { filter: blur(8px); opacity: 0; }
   border-color: var(--c-line-strong);
   box-shadow: var(--glow-cyan);
 }
+.icon-btn:active {
+  transform: translateY(0);
+  box-shadow: var(--glow-cyan);
+}
 .icon-btn .badge {
   position: absolute;
   top: -4px;
@@ -388,6 +392,9 @@ body.boot .status-strip { filter: blur(8px); opacity: 0; }
   .notif-close:hover {
     border-color: var(--c-orange);
     color: var(--c-orange);
+  }
+  .notif-close:active {
+    box-shadow: 0 0 6px rgba(255, 145, 0, 0.45);
   }
   .notif-list {
     list-style: none;
@@ -635,6 +642,10 @@ body.boot .status-strip { filter: blur(8px); opacity: 0; }
   border-color: var(--c-line-strong);
   box-shadow: var(--glow-cyan);
   transform: translateY(-1px);
+}
+.qlink:active {
+  transform: translateY(0);
+  box-shadow: var(--glow-cyan);
 }
 .qlink-glyph {
   font-size: 14px;
@@ -949,6 +960,7 @@ body.boot .status-strip { filter: blur(8px); opacity: 0; }
   transition: all .2s ease;
 }
 .chip:hover { color: var(--c-cyan); border-color: var(--c-line-strong); box-shadow: var(--glow-cyan); }
+.chip:active { transform: translateY(0); box-shadow: var(--glow-cyan); }
 .chip.active {
   color: var(--c-cyan);
   border-color: var(--c-line-strong);
@@ -980,6 +992,10 @@ body.boot .status-strip { filter: blur(8px); opacity: 0; }
 .widget:hover {
   transform: translateY(-2px);
   border-color: var(--c-line-strong);
+  box-shadow: var(--glow-cyan);
+}
+.widget:active {
+  transform: translateY(0);
   box-shadow: var(--glow-cyan);
 }
 .widget::before {
@@ -1250,6 +1266,7 @@ body.boot .status-strip { filter: blur(8px); opacity: 0; }
   width: var(--w, 50%);
   background: linear-gradient(90deg, var(--c-cyan), var(--c-blue));
   box-shadow: 0 0 6px var(--c-cyan);
+  transition: width .25s ease;
 }
 .goal-fill.alert {
   background: linear-gradient(90deg, var(--c-orange), var(--c-orange-soft));

@@ -33,6 +33,7 @@
   transition: transform .2s, border-color .2s, box-shadow .2s;
 }
 .next-tile:hover { transform: translateY(-2px); border-color: var(--c-cyan); box-shadow: 0 0 22px rgba(0, 229, 255, 0.22); }
+.next-tile:active { transform: translateY(0); box-shadow: 0 0 22px rgba(0, 229, 255, 0.22); }
 .next-label { font-family: var(--f-display); font-size: 10px; letter-spacing: 0.3em; color: var(--c-cyan); }
 .next-title {
   font-family: var(--f-body);

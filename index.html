@@ -51,11 +51,11 @@
       <a class="chip" href="statements.html">STATEMENTS</a>
       <a class="chip" href="https://elearn.ucr.edu" target="_blank" rel="noopener noreferrer">CANVAS ↗</a>
       <a class="chip" href="settings.html">SETTINGS</a>
-      <a class="chip" href="#" onclick="JarvisView.switchTo('mobile'); return false;">PHONE VIEW</a>
+      <a class="chip" href="mobile.html" data-view="mobile">PHONE VIEW</a>
     </nav>
 
     <div class="home-bar-right">
-      <button class="icon-btn" id="notifBtn" title="Upcoming assignments" aria-label="Upcoming assignments">
+      <button class="icon-btn" id="notifBtn" title="Upcoming assignments" aria-label="Upcoming assignments" aria-haspopup="dialog" aria-expanded="false" aria-controls="notifPanel">
         <span class="icon-glyph">◈</span>
         <span class="badge" id="notifBadge" hidden>0</span>
       </button>
@@ -236,9 +236,27 @@
       function setOpen(open) {
         panel.hidden = !open;
         panel.classList.toggle('open', open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       }
       btn.addEventListener('click', function () { setOpen(panel.hidden); });
       close.addEventListener('click', function () { setOpen(false); });
+      document.addEventListener('click', function (e) {
+        if (panel.hidden) return;
+        if (panel.contains(e.target) || btn.contains(e.target)) return;
+        setOpen(false);
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !panel.hidden) setOpen(false);
+      });
+      document.addEventListener('click', function (e) {
+        var t = e.target.closest && e.target.closest('[data-view]');
+        if (!t) return;
+        var v = t.getAttribute('data-view');
+        if (typeof JarvisView !== 'undefined' && JarvisView.switchTo) {
+          e.preventDefault();
+          JarvisView.switchTo(v);
+        }
+      });
     })();
   </script>
 </body>

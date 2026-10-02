@@ -332,6 +332,10 @@
         }
         var unread = res.d.messages.filter(function (m) { return m.unread; }).length;
         if (meta) meta.textContent = unread + ' UNREAD';
+        if (!res.d.messages.length) {
+          host.innerHTML = '<li class="ev-empty">Inbox is clear.</li>';
+          return;
+        }
         host.innerHTML = res.d.messages.map(function (m) {
           return '<li class="mail-row' + (m.unread ? ' is-unread' : '') + '"><span class="mail-dot"></span>' +
             '<span class="mail-main"><span class="mail-from">' + esc(senderName(m.from)) + '</span>' +

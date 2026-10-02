@@ -89,9 +89,23 @@
       const note = $('#portfolioNote');
       if (note) {
         const n = pd.enrichedHoldings().length;
-        note.textContent = n
-          ? n + ' position' + (n === 1 ? '' : 's') + ' tracked \u00b7 prices update every 30s' + (pd.unknownCostCount() ? ' \u00b7 gain/loss covers ' + (n - pd.unknownCostCount()) + ' with cost basis' : '')
-          : 'No holdings yet \u2014 add your positions to start tracking.';
+        if (pd.loadError && n === 0) {
+          note.textContent = "Couldn't load portfolio \u2014 retrying.";
+          note.classList.add('is-error');
+          note.classList.remove('is-warn');
+          note.style.color = 'var(--c-orange-soft)';
+        } else if (pd.loadError && n > 0) {
+          note.textContent = 'Live prices may be stale.';
+          note.classList.add('is-warn');
+          note.classList.remove('is-error');
+          note.style.color = 'var(--c-orange-soft)';
+        } else {
+          note.textContent = n
+            ? n + ' position' + (n === 1 ? '' : 's') + ' tracked \u00b7 prices update every 30s' + (pd.unknownCostCount() ? ' \u00b7 gain/loss covers ' + (n - pd.unknownCostCount()) + ' with cost basis' : '')
+            : 'No holdings yet \u2014 add your positions to start tracking.';
+          note.classList.remove('is-error', 'is-warn');
+          note.style.color = '';
+        }
       }
 
       const portVal = $('#portVal');

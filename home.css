@@ -169,8 +169,10 @@ a.widget { cursor: pointer; }
   padding: 0;
 }
 .goal-step:hover { border-color: var(--c-cyan); }
+.goal-step:active { box-shadow: 0 0 6px rgba(0, 229, 255, 0.3); }
 .goal-del { color: var(--c-orange); }
 .goal-del:hover { border-color: var(--c-orange); }
+.goal-del:active { box-shadow: 0 0 6px rgba(255, 145, 0, 0.3); }
 .goal-form { display: flex; gap: 6px; }
 .goal-form input {
   flex: 1;

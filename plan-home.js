@@ -26,7 +26,7 @@
         : '<li class="ph-none">' + (c.items.length ? c.items.length + ' with no date yet' : 'Nothing posted yet') + '</li>';
       return '<div class="ph-course" style="--c:' + esc(color) + '"><div class="ph-name"><i></i>' + esc(c.name) + '</div><ul>' + lines + '</ul></div>';
     }).join('');
-    host.innerHTML = rows;
+    host.innerHTML = rows || '<div class="ph-none">No classes to plan from yet.</div>';
     var meta = document.getElementById('planMeta');
     if (meta) meta.textContent = d.courses.length + ' CLASSES';
   }

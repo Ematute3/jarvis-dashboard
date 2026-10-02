@@ -266,17 +266,28 @@
   }
 
   // Calendar fetch that keeps the server's "how to fix it" message.
+  // Caps the request at 10s so a slow /api/calendar/events cannot hang the
+  // nextEvent / eventsList / home-today widgets forever.
   function loadCalendar() {
-    return fetch('/api/calendar/events', { credentials: 'same-origin' })
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function () { controller.abort(); }, 10000);
+    return fetch('/api/calendar/events', { credentials: 'same-origin', signal: controller.signal })
       .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
       .then(function (res) {
+        clearTimeout(timeoutId);
         if (!res.ok || !Array.isArray(res.data.events)) {
           return { error: res.data && res.data.error ? res.data.error : 'Could not load your calendar.' };
         }
         // Class meetings are on Google Calendar too, but the dashboard already shows them from the schedule.
         return { events: res.data.events.filter(function (e) { return !e.isClass; }) };
       })
-      .catch(function () { return { error: 'Could not reach the dashboard server.' }; });
+      .catch(function (err) {
+        clearTimeout(timeoutId);
+        if (err && err.name === 'AbortError') {
+          return { error: 'Calendar is taking longer than expected.' };
+        }
+        return { error: 'Could not reach the dashboard server.' };
+      });
   }
 
   // Helpers and loaded data are shared with extras.js (desktop/mobile extras).

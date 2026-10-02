@@ -207,6 +207,38 @@
         <button type="submit" class="goal-add" aria-label="Add goal">+</button>
       </form>
     </div>
+
+    <!-- Row 5: native Mac quick-launch (Tauri) -->
+    <div class="widget c-launcher" aria-label="Native quick launch">
+      <div class="widget-head">
+        <span class="widget-title">QUICK LAUNCH</span>
+        <span class="widget-tag">NATIVE</span>
+      </div>
+      <div class="ql-grid">
+        <button type="button" class="ql-btn" data-launch="calendar" aria-label="Open Calendar">
+          <span class="ql-glyph">◐</span><span class="ql-label">Calendar</span>
+        </button>
+        <button type="button" class="ql-btn" data-launch="mail" aria-label="Open Mail">
+          <span class="ql-glyph">✉</span><span class="ql-label">Mail</span>
+        </button>
+        <button type="button" class="ql-btn" data-launch="reminders" aria-label="Open Reminders">
+          <span class="ql-glyph">☑</span><span class="ql-label">Reminders</span>
+        </button>
+        <button type="button" class="ql-btn" data-launch="finder" aria-label="Open Finder at home">
+          <span class="ql-glyph">▤</span><span class="ql-label">Finder</span>
+        </button>
+        <button type="button" class="ql-btn" data-launch="vscode" data-path="/Users/evanmatute/Documents/Minimax/jarvis-dashboard" aria-label="Open VS Code at JARVIS repo">
+          <span class="ql-glyph">◆</span><span class="ql-label">VS Code</span>
+        </button>
+        <button type="button" class="ql-btn" data-launch="browser" data-url="https://github.com/Ematute3/jarvis-dashboard" aria-label="Open JARVIS repo in browser">
+          <span class="ql-glyph">↗</span><span class="ql-label">JARVIS repo</span>
+        </button>
+      </div>
+      <div class="widget-foot">
+        <span class="widget-hint">Opens in native Mac apps</span>
+        <span class="widget-arrow">→</span>
+      </div>
+    </div>
   </main>
 
   <!-- Upcoming assignments panel (toggled by the ◈ icon in the top bar) -->
@@ -259,5 +291,6 @@
       });
     })();
   </script>
+  <script src="native-launcher.js" defer></script>
 </body>
 </html>

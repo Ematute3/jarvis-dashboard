@@ -74,6 +74,7 @@
 .c-news   { grid-column: span 6; }
 .c-port   { grid-column: span 3; }
 .c-goals  { grid-column: span 3; }
+.c-launcher { grid-column: span 6; }
 
 /* Cards fill their grid cell and keep the footer pinned to the bottom */
 .dash > .widget { height: 100%; }
@@ -266,7 +267,7 @@
 /* ---------- Tablet ---------- */
 @media (max-width: 1150px) {
   .c-week, .c-news { grid-column: span 12; }
-  .c-assign, .c-events, .c-rings, .c-inbox, .c-port, .c-goals { grid-column: span 6; }
+  .c-assign, .c-events, .c-rings, .c-inbox, .c-port, .c-goals, .c-launcher { grid-column: span 6; }
   .hero { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {

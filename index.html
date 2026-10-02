@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="JARVIS" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#080c16" />
+  <title>JARVIS · Master Dashboard</title>
+  <script src="view.js"></script>
+  <script>JarvisView.route('desktop');</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="home.css" />
+  <link rel="stylesheet" href="extras.css" />
+  <link rel="stylesheet" href="desktop.css" />
+</head>
+<body class="dash-page">
+
+  <!-- Animated backdrop (decorative only) -->
+  <div class="bg-fx" aria-hidden="true">
+    <div class="bg-orb o1"></div>
+    <div class="bg-orb o2"></div>
+    <div class="bg-scan"></div>
+  </div>
+
+  <!-- ===== Top bar: brand, links to every page, assignments ===== -->
+  <header class="topbar home-bar" role="banner">
+    <div class="brand">
+      <span class="brand-mark">⟢</span>
+      <span class="brand-text">J.A.R.V.I.S.</span>
+    </div>
+
+    <nav class="home-nav" aria-label="Pages">
+      <a class="chip" href="classes.html">SCHOOL</a>
+      <a class="chip" href="plan.html">BY CLASS</a>
+      <a class="chip" href="assignments.html">ASSIGNMENTS</a>
+      <a class="chip" href="calendar.html">CALENDAR</a>
+      <a class="chip" href="email.html">INBOX</a>
+      <a class="chip" href="portfolio.html">MONEY</a>
+      <a class="chip" href="syllabus.html">LIBRARY</a>
+      <a class="chip" href="statements.html">STATEMENTS</a>
+      <a class="chip" href="https://elearn.ucr.edu" target="_blank" rel="noopener noreferrer">CANVAS ↗</a>
+      <a class="chip" href="settings.html">SETTINGS</a>
+      <a class="chip" href="#" onclick="JarvisView.switchTo('mobile'); return false;">PHONE VIEW</a>
+    </nav>
+
+    <div class="home-bar-right">
+      <button class="icon-btn" id="notifBtn" title="Upcoming assignments" aria-label="Upcoming assignments">
+        <span class="icon-glyph">◈</span>
+        <span class="badge" id="notifBadge" hidden>0</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="dash" role="main">
+
+    <!-- Hero: greeting, live clock, and what's next -->
+    <section class="hero" aria-label="Today">
+      <div class="hero-main">
+        <p class="hero-eyebrow">MASTER DASHBOARD</p>
+        <h1 class="hero-greeting" id="heroGreeting">Hello, Evan</h1>
+        <p class="hero-date" id="heroDate">&nbsp;</p>
+        <div class="hero-clock" id="systemTime">--:--:--</div>
+        <div class="day-progress">
+          <div class="day-track"><div id="dayProgressFill"></div></div>
+          <span id="dayProgressText"></span>
+        </div>
+      </div>
+      <div class="next-row">
+        <a class="next-tile" id="nextClass" href="classes.html"><span class="next-label">NEXT CLASS</span><span class="next-title">Loading&hellip;</span></a>
+        <a class="next-tile" id="nextDue" href="assignments.html"><span class="next-label">NEXT DUE</span><span class="next-title">Loading&hellip;</span></a>
+        <a class="next-tile" id="nextEvent" href="calendar.html"><span class="next-label">NEXT EVENT</span><span class="next-title">Loading&hellip;</span></a>
+      </div>
+    </section>
+
+    <!-- Row 2: week schedule + assignments -->
+    <a class="widget c-week" href="classes.html">
+      <div class="widget-head">
+        <span class="widget-title">THIS WEEK</span>
+        <span class="widget-tag">CLASS SCHEDULE</span>
+      </div>
+      <div id="weekGrid"><div class="wk-empty">Loading&hellip;</div></div>
+      <div class="widget-foot">
+        <span class="widget-hint">Open classes</span>
+        <span class="widget-arrow">→</span>
+      </div>
+    </a>
+
+    <a class="widget c-assign" href="assignments.html">
+      <div class="widget-head">
+        <span class="widget-title">ASSIGNMENT LIST</span>
+        <span class="widget-tag" id="assignMeta">UPCOMING</span>
+      </div>
+      <ul class="assign-list" data-limit="10">
+        <li class="assign-row"><span class="a-title">Loading&hellip;</span></li>
+      </ul>
+      <div class="widget-foot">
+        <span class="widget-hint">See all assignments</span>
+        <span class="widget-arrow">→</span>
+      </div>
+    </a>
+
+
+    <a class="widget c-plan" href="plan.html">
+      <div class="widget-head">
+        <span class="widget-title">BY CLASS</span>
+        <span class="widget-tag" id="planMeta">WHAT'S NEXT</span>
+      </div>
+      <div class="ph-grid" id="planHome" data-limit="2"><div class="ph-none">Loading&hellip;</div></div>
+      <div class="widget-foot">
+        <span class="widget-hint">Full to-do list for every class</span>
+        <span class="widget-arrow">→</span>
+      </div>
+    </a>
+
+    <!-- Row 3: events, course progress, inbox -->
+    <a class="widget c-events" href="calendar.html">
+      <div class="widget-head">
+        <span class="widget-title">UPCOMING EVENTS</span>
+        <span class="widget-tag" id="eventsMeta">&hellip;</span>
+      </div>
+      <ul class="ev-list" id="eventsList"><li class="ev-empty">Loading&hellip;</li></ul>
+      <div class="minimonth" id="miniMonth"></div>
+      <div class="widget-foot">
+        <span class="widget-hint">Open calendar</span>
+        <span class="widget-arrow">→</span>
+      </div>
+    </a>
+
+    <a class="widget c-rings" href="classes.html">
+      <div class="widget-head">
+        <span class="widget-title">COURSE PROGRESS</span>
+        <span class="widget-tag" id="courseRingsMeta">&hellip;</span>
+      </div>
+      <div class="rings" id="courseRings"><div class="wk-empty">Loading&hellip;</div></div>
+      <div class="widget-foot">
+        <span class="widget-hint">Assignments done · grades &amp; calculator</span>
+        <span class="widget-arrow">→</span>
+      </div>
+    </a>
+
+    <a class="widget c-inbox" href="email.html">
+      <div class="widget-head">
+        <span class="widget-title">INBOX</span>
+        <span class="widget-tag" id="inboxMeta">&hellip;</span>
+      </div>
+      <ul class="ev-list" id="inboxList"><li class="ev-empty">Loading&hellip;</li></ul>
+      <div class="widget-foot">
+        <span class="widget-hint">Open inbox</span>
+        <span class="widget-arrow">→</span>
+      </div>
+    </a>
+
+    <!-- Row 4: news, portfolio, goals -->
+    <div class="widget widget-news c-news">
+      <div class="widget-head">
+        <a class="widget-title widget-title-link" href="https://news.google.com" target="_blank" rel="noopener noreferrer">NEWS ↗</a>
+        <span class="widget-tag" id="homeNewsDate">TODAY</span>
+      </div>
+      <ul class="news-links" id="homeNewsList">
+        <li class="news-empty">Loading&hellip;</li>
+      </ul>
+    </div>
+
+    <a class="widget c-port" href="portfolio.html">
+      <div class="widget-head">
+        <span class="widget-title">PORTFOLIO</span>
+        <span class="widget-tag">MONEY</span>
+      </div>
+      <div class="port-value">
+        <span class="port-num" id="portfolioValue" data-shared-portfolio>$--.--</span>
+        <span class="port-change up" id="portfolioDelta">—</span>
+      </div>
+      <svg viewBox="0 0 200 40" class="mini-spark" id="portfolioSparkSvg" preserveAspectRatio="none" aria-hidden="true" hidden>
+        <polyline class="spark-line up" id="portfolioSpark" points="" />
+      </svg>
+      <div class="port-stats">
+        <div><span>POSITIONS</span><b id="portPositions">—</b></div>
+        <div><span>TODAY</span><b id="portDay">—</b></div>
+        <div><span>TOTAL G/L</span><b id="portGain">—</b></div>
+      </div>
+      <p class="port-note" id="portfolioNote">&nbsp;</p>
+      <div class="widget-foot">
+        <span class="widget-hint">Holdings &amp; timeline</span>
+        <span class="widget-arrow">→</span>
+      </div>
+    </a>
+
+    <div class="widget widget-goals c-goals">
+      <div class="widget-head">
+        <span class="widget-title">GOALS</span>
+        <span class="widget-tag" id="goalsCount">0</span>
+      </div>
+      <ul class="goal-list" id="goalList"></ul>
+      <form class="goal-form" id="goalForm" autocomplete="off">
+        <input type="text" id="goalInput" maxlength="80" placeholder="Add a goal&hellip;" aria-label="New goal" />
+        <button type="submit" class="goal-add" aria-label="Add goal">+</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- Upcoming assignments panel (toggled by the ◈ icon in the top bar) -->
+  <div id="notifPanel" class="notif-panel" hidden>
+    <div class="notif-head">
+      <span class="notif-title">ASSIGNMENT LIST</span>
+      <button class="notif-close" id="notifClose" aria-label="Close">×</button>
+    </div>
+    <ul class="notif-list" id="notifList">
+      <li class="notif-item"><span class="notif-body">Loading&hellip;</span></li>
+    </ul>
+    <a class="notif-all" href="assignments.html" style="display:block;padding:12px 16px;text-align:center;font-family:var(--f-mono);font-size:11px;letter-spacing:.18em;color:var(--c-cyan);text-decoration:none">SEE ALL ASSIGNMENTS &rarr;</a>
+  </div>
+
+  <script src="portfolio-shared.js"></script>
+  <script src="app.js"></script>
+  <script src="academics.js"></script>
+  <script src="extras.js"></script>
+  <script src="news.js"></script>
+  <script src="goals.js"></script>
+  <script src="plan-home.js"></script>
+  <script>
+    (function () {
+      var btn = document.getElementById('notifBtn');
+      var panel = document.getElementById('notifPanel');
+      var close = document.getElementById('notifClose');
+      function setOpen(open) {
+        panel.hidden = !open;
+        panel.classList.toggle('open', open);
+      }
+      btn.addEventListener('click', function () { setOpen(panel.hidden); });
+      close.addEventListener('click', function () { setOpen(false); });
+    })();
+  </script>
+</body>
+</html>

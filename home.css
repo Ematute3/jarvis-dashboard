@@ -1,0 +1,206 @@
+/* ============================================================
+   HOME PAGE LAYOUT
+   One dense dashboard: a top bar that links to every page, then three
+   columns of compact cards. Every card that has a matching page is a link
+   to it; news headlines link to their articles.
+   ============================================================ */
+
+svg[hidden],
+.icon-btn .badge[hidden] { display: none; }
+
+/* ---------- Top bar ---------- */
+.home-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  padding: 8px 16px;
+}
+.home-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.home-nav .chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  font-size: 10px;
+  text-decoration: none;
+}
+.home-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+.home-bar-right .time-value {
+  font-family: var(--f-mono);
+  font-size: 15px;
+  letter-spacing: 0.1em;
+  color: var(--c-cyan);
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.4);
+}
+
+/* Widgets that are links get a clear affordance; interactive ones don't */
+a.widget { cursor: pointer; }
+.widget-goals,
+.widget-news { cursor: default; }
+.widget-goals:hover,
+.widget-news:hover { transform: none; }
+.widget-title-link { text-decoration: none; }
+.widget-title-link:hover { text-shadow: 0 0 10px var(--c-cyan); }
+
+/* ---------- Compact lists inside cards ---------- */
+.widget .telemetry-list { max-height: none; overflow: visible; padding-right: 0; gap: 2px; }
+.widget .telemetry-row {
+  grid-template-columns: 44px 1fr 58px;
+  padding: 5px 6px;
+}
+.widget .telemetry-row > .t-class:only-child { grid-column: 1 / -1; }
+
+.widget .today-list { gap: 4px; }
+
+.widget .assign-list { gap: 1px; }
+.widget .assign-row { padding: 5px 6px; gap: 8px; grid-template-columns: 12px 1fr auto auto; }
+.widget .a-class { white-space: nowrap; padding: 1px 6px; }
+.assign-row > .a-title:only-child { grid-column: 1 / -1; }
+.widget .a-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Courses: small chips instead of large icon tiles */
+.widget .course-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.widget .course-cell {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  cursor: inherit;
+}
+.widget .course-cell:hover { transform: none; box-shadow: none; border-color: var(--c-line); }
+.widget .course-name { font-size: 10px; letter-spacing: 0.1em; white-space: nowrap; }
+.widget .course-grade { font-size: 12px; }
+.widget .course-grid:has(> .course-cell > .course-meta:only-child) { display: block; }
+
+.widget .port-num { font-size: 26px; }
+.widget .mini-spark { height: 34px; }
+
+/* ---------- News: real headlines, each links out ---------- */
+.news-links {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.news-links li a {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px 8px;
+  border: 1px solid var(--c-line-soft);
+  border-radius: var(--r-2);
+  background: rgba(0, 0, 0, 0.25);
+  text-decoration: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.news-links li a:hover {
+  border-color: var(--c-cyan);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
+}
+.news-headline {
+  font-family: var(--f-body);
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--c-ink);
+}
+.news-src {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--c-ink-faint);
+  text-transform: uppercase;
+}
+.news-empty {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--c-ink-dim);
+}
+
+/* ---------- Goals: user-managed ---------- */
+.goal-list { gap: 6px; }
+.goal-list li.goal-item {
+  display: grid;
+  grid-template-columns: 1fr 48px 32px auto auto auto;
+  align-items: center;
+  gap: 6px;
+}
+.goal-empty {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--c-ink-dim);
+}
+.goal-step,
+.goal-del {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  color: var(--c-cyan);
+  background: transparent;
+  border: 1px solid var(--c-line);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+.goal-step:hover { border-color: var(--c-cyan); }
+.goal-del { color: var(--c-orange); }
+.goal-del:hover { border-color: var(--c-orange); }
+.goal-form { display: flex; gap: 6px; }
+.goal-form input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--f-body);
+  font-size: 12px;
+  color: var(--c-ink);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  padding: 6px 8px;
+}
+.goal-form input:focus { outline: none; border-color: var(--c-cyan); }
+.goal-add {
+  font-family: var(--f-mono);
+  font-size: 14px;
+  width: 30px;
+  color: var(--c-bg);
+  background: var(--c-cyan);
+  border: none;
+  border-radius: var(--r-2);
+  cursor: pointer;
+}
+
+/* Shared card sizing (used by both desktop and mobile layouts) */
+.widget {
+  min-height: 0;
+  padding: 12px 14px;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+.widget .widget-foot { padding-top: 5px; }

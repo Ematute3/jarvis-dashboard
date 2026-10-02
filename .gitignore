@@ -1,0 +1,22 @@
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (if you add a dev server)
+node_modules/
+package-lock.json
+
+# Python (if you add a dev server)
+__pycache__/
+*.pyc
+.venv/
+
+# Build outputs
+dist/
+build/

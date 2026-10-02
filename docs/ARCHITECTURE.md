@@ -167,9 +167,20 @@ window.HomeData = { courses, schedule, upcoming, byCourse, calendar };
 `extras.js` is full of these listeners:
 
 ```js
-document.addEventListener('home:schedule',     refreshFromSchedule);
-document.addEventListener('home:assignments',  refreshFromAssignments);
-document.addEventListener('home:calendar',     refreshFromCalendar);
+document.addEventListener('home:schedule', function () {
+  renderNext();    // next-class tile
+  renderWeek();    // week grid
+});
+document.addEventListener('home:assignments', function () {
+  renderNext();       // next-due tile
+  renderRings();      // course rings
+  renderMiniMonth();  // mini-month
+});
+document.addEventListener('home:calendar', function () {
+  renderNext();       // next-event tile
+  renderEvents();     // events list
+  renderMiniMonth();  // mini-month
+});
 ```
 
 Each one re-renders only the widgets that depend on the data that just

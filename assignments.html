@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080c16" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="home.css" />
+  <link rel="stylesheet" href="extras.css" />
+  <style>
+    .settings-bar { grid-template-columns: auto 1fr auto; }
+    .page {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      padding: 18px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .empty-state {
+      font-family: var(--f-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--c-ink-dim);
+      padding: 28px 16px;
+      text-align: center;
+      border: 1px dashed var(--c-line);
+      border-radius: var(--r-2);
+    }
+    .as-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .as-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--c-line-soft);
+      border-radius: var(--r-2);
+      background: rgba(0, 0, 0, 0.25);
+    }
+    .as-row[data-status="graded"] { opacity: 0.55; }
+    .as-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .as-title {
+      font-family: var(--f-body);
+      font-size: 13px;
+      color: var(--c-ink);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .as-course {
+      font-family: var(--f-mono);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: var(--c-cyan);
+      text-transform: uppercase;
+    }
+    .as-due {
+      font-family: var(--f-mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--c-ink-dim);
+      text-align: right;
+      white-space: nowrap;
+    }
+    .as-due.urgent { color: var(--c-orange); }
+  </style>
+  <title>JARVIS · Assignments</title>
+</head>
+<body class="page-shell">
+
+  <header class="topbar settings-bar" role="banner">
+    <a class="topbar-back" href="index.html" title="Back to dashboard">← DASHBOARD</a>
+    <div class="topbar-title">ASSIGNMENTS</div>
+    <div class="topbar-meta" id="asStatus">checking…</div>
+  </header>
+
+  <main class="page" role="main">
+    <section class="panel" aria-label="Upcoming assignments">
+      <div class="panel-header">
+        <h2 class="panel-title">UPCOMING · CANVAS</h2>
+        <span class="panel-tag" id="asCount">0 ITEMS</span>
+      </div>
+      <ul class="as-list" id="asList">
+        <li class="empty-state">Loading from Canvas…</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+      function el(id) { return document.getElementById(id); }
+      function fetchJSON(url) {
+        return fetch(url).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+      }
+      function fmtDue(s) {
+        if (!s) return 'No due date';
+        var d = new Date(s);
+        if (isNaN(d.getTime())) return '';
+        var diff = (d.getTime() - Date.now()) / 86400000;
+        var stamp = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        if (diff < 0) return stamp + ' · overdue';
+        if (diff < 1) return stamp + ' · today';
+        if (diff < 2) return stamp + ' · tomorrow';
+        if (diff < 7) return stamp + ' · ' + d.toLocaleDateString([], { weekday: 'short' });
+        return stamp;
+      }
+      function isUrgent(s) {
+        if (!s) return false;
+        var d = new Date(s);
+        if (isNaN(d.getTime())) return false;
+        return (d.getTime() - Date.now()) < 2 * 86400000;
+      }
+      function render(assignments) {
+        var ul = el('asList');
+        ul.replaceChildren();
+        if (!assignments.length) {
+          var li = document.createElement('li');
+          li.className = 'empty-state';
+          li.textContent = 'No upcoming assignments.';
+          ul.appendChild(li);
+          el('asCount').textContent = '0 ITEMS';
+          return;
+        }
+        assignments.sort(function (a, b) {
+          var da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+          var db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+          return da - db;
+        });
+        assignments.forEach(function (a) {
+          var row = document.createElement('li');
+          row.className = 'as-row';
+          if (a.status) row.setAttribute('data-status', a.status);
+          var main = document.createElement('div');
+          main.className = 'as-main';
+          var t = document.createElement('span');
+          t.className = 'as-title';
+          t.textContent = a.title || 'Untitled';
+          var c = document.createElement('span');
+          c.className = 'as-course';
+          c.textContent = a.course || '';
+          main.appendChild(t);
+          if (a.course) main.appendChild(c);
+          var due = document.createElement('span');
+          due.className = 'as-due';
+          if (isUrgent(a.dueDate)) due.classList.add('urgent');
+          due.textContent = fmtDue(a.dueDate);
+          row.appendChild(main);
+          row.appendChild(due);
+          ul.appendChild(row);
+        });
+        el('asCount').textContent = assignments.length + ' ITEMS';
+      }
+      function setStatus(state, text) {
+        var s = el('asStatus');
+        s.textContent = text;
+        if (state) s.setAttribute('data-state', state);
+        else s.removeAttribute('data-state');
+      }
+      function load() {
+        setStatus('', 'loading…');
+        fetchJSON('/api/courses/all').then(function (courses) {
+          if (!Array.isArray(courses) || !courses.length) {
+            render([]);
+            setStatus('partial', 'NO COURSES');
+            return;
+          }
+          return Promise.all(courses.map(function (c) {
+            return fetchJSON('/api/canvas/courses/' + encodeURIComponent(c.id) + '/assignments')
+              .then(function (list) {
+                return (Array.isArray(list) ? list : []).map(function (a) {
+                  return {
+                    title: a.title || a.name || '',
+                    course: c.code || c.name || '',
+                    dueDate: a.dueDate || a.due_at || null,
+                    status: a.status || 'unsubmitted',
+                  };
+                });
+              })
+              .catch(function () { return []; });
+          })).then(function (lists) {
+            var merged = [];
+            lists.forEach(function (l) { merged = merged.concat(l); });
+            render(merged);
+            setStatus(merged.length ? 'ok' : '', merged.length ? 'CONNECTED' : 'NO DATA');
+          });
+        }).catch(function () {
+          render([]);
+          setStatus('partial', 'OFFLINE');
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', load);
+      } else {
+        load();
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080c16" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="home.css" />
+  <link rel="stylesheet" href="extras.css" />
+  <style>
+    .settings-bar { grid-template-columns: auto 1fr auto; }
+    .page {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      padding: 18px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .empty-state {
+      font-family: var(--f-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--c-ink-dim);
+      padding: 28px 16px;
+      text-align: center;
+      border: 1px dashed var(--c-line);
+      border-radius: var(--r-2);
+    }
+    .port-tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .port-tile {
+      padding: 14px 16px;
+      border: 1px solid var(--c-line);
+      border-radius: var(--r-2);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .port-tile h3 {
+      margin: 0;
+      font-family: var(--f-display);
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      color: var(--c-cyan);
+    }
+    .port-tile .big {
+      font-family: var(--f-mono);
+      font-size: 22px;
+      color: var(--c-ink);
+      letter-spacing: 0.04em;
+    }
+    .port-tile .meta {
+      font-family: var(--f-mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--c-ink-faint);
+    }
+    .port-tile .meta.up { color: var(--c-cyan); }
+    .port-tile .meta.down { color: var(--c-orange); }
+    .port-chart {
+      width: 100%;
+      height: 80px;
+      display: block;
+    }
+    .port-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .port-row {
+      display: grid;
+      grid-template-columns: 70px 1fr auto auto;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 10px;
+      border: 1px solid var(--c-line-soft);
+      border-radius: var(--r-2);
+      background: rgba(0, 0, 0, 0.25);
+      font-family: var(--f-mono);
+      font-size: 12px;
+    }
+    .port-row .ticker { color: var(--c-cyan); letter-spacing: 0.12em; }
+    .port-row .shares { color: var(--c-ink-dim); }
+    .port-row .val { color: var(--c-ink); text-align: right; }
+    .port-row .chg.up { color: var(--c-cyan); }
+    .port-row .chg.down { color: var(--c-orange); }
+  </style>
+  <title>JARVIS · Portfolio</title>
+</head>
+<body class="page-shell">
+
+  <header class="topbar settings-bar" role="banner">
+    <a class="topbar-back" href="index.html" title="Back to dashboard">← DASHBOARD</a>
+    <div class="topbar-title">PORTFOLIO</div>
+    <div class="topbar-meta" id="portStatus">checking…</div>
+  </header>
+
+  <main class="page" role="main">
+    <section class="port-tiles" aria-label="Portfolio summary">
+      <article class="port-tile">
+        <h3>TOTAL VALUE</h3>
+        <span class="big" id="portTotal">$0.00</span>
+        <span class="meta" id="portTotalMeta">AGGREGATE · USD</span>
+      </article>
+      <article class="port-tile">
+        <h3>DAY CHANGE</h3>
+        <span class="big" id="portDay">$0.00</span>
+        <span class="meta" id="portDayMeta">0.00% · SINCE OPEN</span>
+      </article>
+      <article class="port-tile">
+        <h3>ALL-TIME G/L</h3>
+        <span class="big" id="portGain">$0.00</span>
+        <span class="meta" id="portGainMeta">0.00% · VS COST BASIS</span>
+      </article>
+    </section>
+
+    <section class="panel" aria-label="Portfolio chart">
+      <div class="panel-header">
+        <h2 class="panel-title">VALUE TIMELINE</h2>
+        <span class="panel-tag" id="portRange">1D</span>
+      </div>
+      <svg class="port-chart" id="portChart" viewBox="0 0 1000 80" preserveAspectRatio="none" aria-label="Portfolio sparkline">
+        <defs>
+          <linearGradient id="portFade" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="rgba(0,229,255,0.45)" />
+            <stop offset="100%" stop-color="rgba(0,229,255,0)" />
+          </linearGradient>
+        </defs>
+        <path id="portChartFill" fill="url(#portFade)"></path>
+        <path id="portChartLine" fill="none" stroke="#00E5FF" stroke-width="2"></path>
+      </svg>
+      <div id="portChartEmpty" class="empty-state" style="padding:14px;">No history yet.</div>
+    </section>
+
+    <section class="panel" aria-label="Holdings">
+      <div class="panel-header">
+        <h2 class="panel-title">HOLDINGS</h2>
+        <span class="panel-tag" id="portHoldingsCount">0 POSITIONS</span>
+      </div>
+      <ul class="port-list" id="portHoldings">
+        <li class="empty-state">No positions yet.</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+      function el(id) { return document.getElementById(id); }
+      function fetchJSON(url) {
+        return fetch(url).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+      }
+      function formatUSD(n, decimals) {
+        if (decimals == null) decimals = 2;
+        if (!isFinite(n)) return '$0.00';
+        var abs = Math.abs(n);
+        var sign = n < 0 ? '-' : '';
+        return sign + '$' + abs.toLocaleString('en-US', {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        });
+      }
+      function signed(n, decimals) {
+        var v = formatUSD(n, decimals);
+        return n > 0 ? '+' + v : v;
+      }
+      function pct(n, decimals) {
+        if (decimals == null) decimals = 2;
+        if (!isFinite(n)) return '0.00%';
+        return (n > 0 ? '+' : '') + n.toFixed(decimals) + '%';
+      }
+      function hasCost(h) { return typeof h.cost === 'number' && h.cost > 0; }
+      function marketValue(h) { return h.shares * (h.price || 0); }
+      function totalMarketValue(rows) {
+        return rows.reduce(function (a, h) { return a + marketValue(h); }, 0);
+      }
+      function totalCost(rows) {
+        return rows.filter(hasCost).reduce(function (a, h) { return a + h.shares * h.cost; }, 0);
+      }
+      function totalGain(rows) {
+        return totalMarketValue(rows) - totalCost(rows);
+      }
+      function totalDayChange(rows) {
+        return rows.reduce(function (a, h) {
+          return a + (h.change || 0) * h.shares;
+        }, 0);
+      }
+      function prevCloseTotal(rows) {
+        return rows.reduce(function (a, h) {
+          return a + ((h.prev_close != null) ? h.prev_close : (h.price || 0)) * h.shares;
+        }, 0);
+      }
+      function renderHoldings(rows) {
+        var ul = el('portHoldings');
+        ul.replaceChildren();
+        if (!rows.length) {
+          var li = document.createElement('li');
+          li.className = 'empty-state';
+          li.textContent = 'No positions yet.';
+          ul.appendChild(li);
+          el('portHoldingsCount').textContent = '0 POSITIONS';
+          return;
+        }
+        rows.forEach(function (h) {
+          var row = document.createElement('li');
+          row.className = 'port-row';
+          var ticker = document.createElement('span');
+          ticker.className = 'ticker';
+          ticker.textContent = h.ticker;
+          var shares = document.createElement('span');
+          shares.className = 'shares';
+          shares.textContent = h.shares + ' sh';
+          var val = document.createElement('span');
+          val.className = 'val';
+          val.textContent = formatUSD(marketValue(h));
+          var chg = document.createElement('span');
+          var pctv = (h.chg_pct != null) ? h.chg_pct : 0;
+          chg.className = 'chg ' + (pctv >= 0 ? 'up' : 'down');
+          chg.textContent = pct(pctv);
+          row.appendChild(ticker);
+          row.appendChild(shares);
+          row.appendChild(val);
+          row.appendChild(chg);
+          ul.appendChild(row);
+        });
+        el('portHoldingsCount').textContent = rows.length + ' POSITIONS';
+      }
+      function renderSummary(rows) {
+        var mv = totalMarketValue(rows);
+        var c = totalCost(rows);
+        var g = totalGain(rows);
+        var dc = totalDayChange(rows);
+        var pc = prevCloseTotal(rows);
+        var dcp = pc > 0 ? (dc / pc) * 100 : 0;
+        var gp = c > 0 ? (g / c) * 100 : 0;
+        el('portTotal').textContent = formatUSD(mv);
+        el('portDay').textContent = signed(dc);
+        var dayMeta = el('portDayMeta');
+        dayMeta.textContent = pct(dcp) + ' · SINCE OPEN';
+        dayMeta.classList.toggle('up', dcp >= 0);
+        dayMeta.classList.toggle('down', dcp < 0);
+        el('portGain').textContent = signed(g);
+        var gainMeta = el('portGainMeta');
+        gainMeta.textContent = pct(gp) + ' · VS COST BASIS';
+        gainMeta.classList.toggle('up', gp >= 0);
+        gainMeta.classList.toggle('down', gp < 0);
+      }
+      function renderChart(history) {
+        var empty = el('portChartEmpty');
+        var line = el('portChartLine');
+        var fill = el('portChartFill');
+        if (!Array.isArray(history) || history.length < 2) {
+          line.setAttribute('d', '');
+          fill.setAttribute('d', '');
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        var w = 1000, h = 80, pad = 4;
+        var xs = history.map(function (p, i) { return i; });
+        var ys = history.map(function (p) { return typeof p === 'number' ? p : (p.value || p.close || 0); });
+        var min = Math.min.apply(null, ys);
+        var max = Math.max.apply(null, ys);
+        var range = (max - min) || 1;
+        var stepX = (w - pad * 2) / (history.length - 1);
+        var pts = history.map(function (p, i) {
+          var y = h - pad - ((ys[i] - min) / range) * (h - pad * 2);
+          return (pad + i * stepX).toFixed(2) + ',' + y.toFixed(2);
+        });
+        var d = 'M ' + pts.join(' L ');
+        line.setAttribute('d', d);
+        var baseline = (h - pad).toFixed(2);
+        fill.setAttribute('d', d + ' L ' + (w - pad).toFixed(2) + ',' + baseline + ' L ' + pad + ',' + baseline + ' Z');
+        el('portRange').textContent = history[history.length - 1].date ? history[history.length - 1].date : '1D';
+      }
+      function setStatus(state, text) {
+        var s = el('portStatus');
+        s.textContent = text;
+        if (state) s.setAttribute('data-state', state);
+        else s.removeAttribute('data-state');
+      }
+      function load() {
+        setStatus('', 'loading…');
+        Promise.all([
+          fetchJSON('/api/holdings').catch(function () { return []; }),
+          fetchJSON('/api/prices').catch(function () { return { quotes: [] }; }),
+          fetchJSON('/api/portfolio/history').catch(function () { return []; }),
+        ]).then(function (results) {
+          var holdings = Array.isArray(results[0]) ? results[0] : (results[0].holdings || []);
+          var quotes = (results[1] && results[1].quotes) || [];
+          var history = Array.isArray(results[2]) ? results[2] : (results[2].history || []);
+          var qMap = {};
+          quotes.forEach(function (q) { qMap[q.ticker] = q; });
+          var rows = holdings.map(function (h) {
+            var q = qMap[h.ticker] || {};
+            return {
+              ticker: h.ticker,
+              shares: h.shares || 0,
+              cost: (typeof h.cost === 'number' && h.cost > 0) ? h.cost : null,
+              price: q.price || 0,
+              change: q.change || 0,
+              chg_pct: q.chg_pct || 0,
+              prev_close: q.prev_close || 0,
+            };
+          });
+          renderHoldings(rows);
+          renderSummary(rows);
+          renderChart(history);
+          setStatus(rows.length ? 'ok' : '', rows.length ? 'CONNECTED' : 'NO DATA');
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', load);
+      } else {
+        load();
+      }
+    })();
+  </script>
+</body>
+</html>

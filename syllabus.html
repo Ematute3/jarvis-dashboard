@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080c16" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="home.css" />
+  <link rel="stylesheet" href="extras.css" />
+  <style>
+    .settings-bar { grid-template-columns: auto 1fr auto; }
+    .page {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      padding: 18px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .empty-state {
+      font-family: var(--f-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--c-ink-dim);
+      padding: 28px 16px;
+      text-align: center;
+      border: 1px dashed var(--c-line);
+      border-radius: var(--r-2);
+    }
+    .syl-grid {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .syl-card {
+      padding: 12px 14px;
+      border: 1px solid var(--c-line);
+      border-radius: var(--r-2);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .syl-code {
+      font-family: var(--f-display);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      color: var(--c-cyan);
+      text-transform: uppercase;
+    }
+    .syl-name {
+      font-family: var(--f-body);
+      font-size: 13px;
+      color: var(--c-ink);
+      line-height: 1.35;
+    }
+    .syl-src {
+      font-family: var(--f-mono);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: var(--c-ink-faint);
+      text-transform: uppercase;
+    }
+  </style>
+  <title>JARVIS · Library</title>
+</head>
+<body class="page-shell">
+
+  <header class="topbar settings-bar" role="banner">
+    <a class="topbar-back" href="index.html" title="Back to dashboard">← DASHBOARD</a>
+    <div class="topbar-title">LIBRARY</div>
+    <div class="topbar-meta" id="sylStatus">checking…</div>
+  </header>
+
+  <main class="page" role="main">
+    <section class="panel" aria-label="Course library">
+      <div class="panel-header">
+        <h2 class="panel-title">SYLLABUS LIBRARY</h2>
+        <span class="panel-tag" id="sylCount">0 COURSES</span>
+      </div>
+      <ul class="syl-grid" id="sylGrid">
+        <li class="empty-state">Loading courses…</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+      function el(id) { return document.getElementById(id); }
+      function fetchJSON(url) {
+        return fetch(url).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+      }
+      function render(courses) {
+        var grid = el('sylGrid');
+        grid.replaceChildren();
+        if (!Array.isArray(courses) || !courses.length) {
+          var li = document.createElement('li');
+          li.className = 'empty-state';
+          li.textContent = 'No courses yet.';
+          grid.appendChild(li);
+          el('sylCount').textContent = '0 COURSES';
+          return;
+        }
+        courses.forEach(function (c) {
+          var card = document.createElement('li');
+          card.className = 'syl-card';
+          var code = document.createElement('span');
+          code.className = 'syl-code';
+          code.textContent = c.code || c.id || 'COURSE';
+          var name = document.createElement('span');
+          name.className = 'syl-name';
+          name.textContent = c.name || c.title || 'Untitled course';
+          var src = document.createElement('span');
+          src.className = 'syl-src';
+          src.textContent = c.source ? c.source.toUpperCase() : 'CANVAS';
+          card.appendChild(code);
+          card.appendChild(name);
+          card.appendChild(src);
+          grid.appendChild(card);
+        });
+        el('sylCount').textContent = courses.length + ' COURSES';
+      }
+      function setStatus(state, text) {
+        var s = el('sylStatus');
+        s.textContent = text;
+        if (state) s.setAttribute('data-state', state);
+        else s.removeAttribute('data-state');
+      }
+      function load() {
+        setStatus('', 'loading…');
+        fetchJSON('/api/courses/all').then(function (data) {
+          var list = Array.isArray(data) ? data : [];
+          render(list);
+          setStatus(list.length ? 'ok' : '', list.length ? 'CONNECTED' : 'NO DATA');
+        }).catch(function () {
+          render([]);
+          setStatus('partial', 'OFFLINE');
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', load);
+      } else {
+        load();
+      }
+    })();
+  </script>
+</body>
+</html>

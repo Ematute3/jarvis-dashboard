@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JARVIS · Statements</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="home.css" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    .page { max-width: 720px; margin: 0 auto; padding: 28px 16px; }
+    .panel { padding: 24px; }
+    .empty-state { text-align: center; padding: 40px 16px; color: var(--c-ink-dim); }
+    .empty-state h2 { font-family: var(--f-display); font-size: 16px; color: var(--c-cyan); letter-spacing: 0.18em; margin: 0 0 12px; }
+    .empty-state p { margin: 8px 0; line-height: 1.5; }
+    .empty-state code { font-family: var(--f-mono); color: var(--c-orange); background: rgba(255,145,0,0.08); padding: 2px 6px; border-radius: 4px; }
+    .back-link { display: inline-block; margin-top: 16px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.22em; color: var(--c-cyan); text-decoration: none; }
+    .back-link:hover { text-shadow: 0 0 10px var(--c-cyan); }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="panel">
+      <header style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <a href="index.html" class="back-link" style="margin-top:0;">← DASHBOARD</a>
+        <span style="font-family:var(--f-mono);font-size:10px;letter-spacing:0.32em;color:var(--c-ink-faint);">STATEMENTS</span>
+      </header>
+
+      <div class="empty-state">
+        <h2>CSV INGEST · MONEY MODULE</h2>
+        <p>The legacy JARVIS dashboard has a full statements module — drag-and-drop CSV ingestion, paste-CSV parser, parsed-transaction view, debit/credit/net summary.</p>
+        <p>This local copy is a stub for now. To use the full feature, open the live page:</p>
+        <p><a href="http://jarviss-mac-mini.taile919c2.ts.net:8765/statements.html" target="_blank" rel="noopener noreferrer" style="color:var(--c-cyan);">http://jarviss-mac-mini.taile919c2.ts.net:8765/statements.html ↗</a></p>
+        <p>Or, to wire it up locally, port <code>statements.css</code> + <code>statements.js</code> from the legacy backend into this repo and add a CSV-ingest endpoint to <code>server.js</code>.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

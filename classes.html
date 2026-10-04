@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080c16" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="home.css" />
+  <link rel="stylesheet" href="extras.css" />
+  <style>
+    /* Page-specific shell + back-link variants. Uses tokens from styles.css. */
+    .settings-bar { grid-template-columns: auto 1fr auto; }
+    .page {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      padding: 18px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .empty-state {
+      font-family: var(--f-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--c-ink-dim);
+      padding: 28px 16px;
+      text-align: center;
+      border: 1px dashed var(--c-line);
+      border-radius: var(--r-2);
+    }
+    .cls-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .cls-row {
+      display: grid;
+      grid-template-columns: 90px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--c-line-soft);
+      border-radius: var(--r-2);
+      background: rgba(0, 0, 0, 0.25);
+    }
+    .cls-day {
+      font-family: var(--f-mono);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      color: var(--c-cyan);
+      text-transform: uppercase;
+    }
+    .cls-name {
+      font-family: var(--f-body);
+      font-size: 13px;
+      color: var(--c-ink);
+    }
+    .cls-when {
+      font-family: var(--f-mono);
+      font-size: 11px;
+      color: var(--c-ink-faint);
+      letter-spacing: 0.06em;
+    }
+  </style>
+  <title>JARVIS · Classes</title>
+</head>
+<body class="page-shell">
+
+  <header class="topbar settings-bar" role="banner">
+    <a class="topbar-back" href="index.html" title="Back to dashboard">← DASHBOARD</a>
+    <div class="topbar-title">CLASSES</div>
+    <div class="topbar-meta" id="clsStatus">checking…</div>
+  </header>
+
+  <main class="page" role="main">
+    <section class="panel" aria-label="Weekly schedule">
+      <div class="panel-header">
+        <h2 class="panel-title">THIS WEEK</h2>
+        <span class="panel-tag" id="clsCount">0 CLASSES</span>
+      </div>
+      <ul class="cls-list" id="clsList">
+        <li class="empty-state">Loading schedule…</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+      function el(id) { return document.getElementById(id); }
+      function fetchJSON(url) {
+        return fetch(url).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+      }
+      function fmtTime(s) {
+        if (!s) return '';
+        var d = new Date(s);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+      function fmtDay(s) {
+        var d = new Date(s);
+        if (isNaN(d.getTime())) return '';
+        return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+      }
+      function render(list) {
+        var ul = el('clsList');
+        ul.replaceChildren();
+        if (!list || !list.length) {
+          var li = document.createElement('li');
+          li.className = 'empty-state';
+          li.textContent = 'No classes scheduled.';
+          ul.appendChild(li);
+          el('clsCount').textContent = '0 CLASSES';
+          return;
+        }
+        list.forEach(function (c) {
+          var row = document.createElement('li');
+          row.className = 'cls-row';
+          var day = document.createElement('span');
+          day.className = 'cls-day';
+          day.textContent = fmtDay(c.start || c.day || c.date);
+          var name = document.createElement('span');
+          name.className = 'cls-name';
+          name.textContent = c.title || c.name || c.course || 'Untitled class';
+          var when = document.createElement('span');
+          when.className = 'cls-when';
+          var start = fmtTime(c.start);
+          var end = fmtTime(c.end);
+          when.textContent = start && end ? (start + ' – ' + end) : (start || '');
+          row.appendChild(day);
+          row.appendChild(name);
+          row.appendChild(when);
+          ul.appendChild(row);
+        });
+        el('clsCount').textContent = list.length + ' CLASSES';
+      }
+      function setStatus(state, text) {
+        var s = el('clsStatus');
+        s.textContent = text;
+        if (state) s.setAttribute('data-state', state);
+        else s.removeAttribute('data-state');
+      }
+      function load() {
+        setStatus('', 'loading…');
+        fetchJSON('/api/schedule').then(function (data) {
+          var list = Array.isArray(data) ? data : (data.classes || data.schedule || []);
+          render(list);
+          setStatus(list.length ? 'ok' : '', list.length ? 'CONNECTED' : 'NO DATA');
+        }).catch(function () {
+          render([]);
+          setStatus('partial', 'OFFLINE');
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', load);
+      } else {
+        load();
+      }
+    })();
+  </script>
+</body>
+</html>

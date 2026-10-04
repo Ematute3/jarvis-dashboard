@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080c16" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="home.css" />
+  <link rel="stylesheet" href="extras.css" />
+  <style>
+    .settings-bar { grid-template-columns: auto 1fr auto; }
+    .page {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      padding: 18px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .empty-state {
+      font-family: var(--f-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--c-ink-dim);
+      padding: 28px 16px;
+      text-align: center;
+      border: 1px dashed var(--c-line);
+      border-radius: var(--r-2);
+    }
+    .eml-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .eml-row {
+      display: grid;
+      grid-template-columns: 12px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--c-line-soft);
+      border-radius: var(--r-2);
+      background: rgba(0, 0, 0, 0.25);
+    }
+    .eml-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--c-ink-faint);
+    }
+    .eml-row.is-unread .eml-dot {
+      background: var(--c-cyan);
+      box-shadow: 0 0 8px var(--c-cyan);
+    }
+    .eml-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .eml-from {
+      font-family: var(--f-body);
+      font-size: 12px;
+      color: var(--c-ink-dim);
+    }
+    .eml-row.is-unread .eml-from { color: var(--c-ink); font-weight: 600; }
+    .eml-subj {
+      font-family: var(--f-body);
+      font-size: 12px;
+      color: var(--c-ink-faint);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  </style>
+  <title>JARVIS · Inbox</title>
+</head>
+<body class="page-shell">
+
+  <header class="topbar settings-bar" role="banner">
+    <a class="topbar-back" href="index.html" title="Back to dashboard">← DASHBOARD</a>
+    <div class="topbar-title">INBOX</div>
+    <div class="topbar-meta" id="emlStatus">checking…</div>
+  </header>
+
+  <main class="page" role="main">
+    <section class="panel" aria-label="Recent mail">
+      <div class="panel-header">
+        <h2 class="panel-title">RECENT · GMAIL</h2>
+        <span class="panel-tag" id="emlCount">0 MESSAGES</span>
+      </div>
+      <ul class="eml-list" id="emlList">
+        <li class="empty-state">Loading inbox…</li>
+      </ul>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      'use strict';
+      function el(id) { return document.getElementById(id); }
+      function fetchJSON(url) {
+        return fetch(url).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+      }
+      function render(messages) {
+        var ul = el('emlList');
+        ul.replaceChildren();
+        if (!messages.length) {
+          var li = document.createElement('li');
+          li.className = 'empty-state';
+          li.textContent = 'Inbox is empty.';
+          ul.appendChild(li);
+          el('emlCount').textContent = '0 MESSAGES';
+          return;
+        }
+        messages.forEach(function (m) {
+          var row = document.createElement('li');
+          row.className = 'eml-row';
+          if (m.unread) row.classList.add('is-unread');
+          var dot = document.createElement('span');
+          dot.className = 'eml-dot';
+          var main = document.createElement('div');
+          main.className = 'eml-main';
+          var from = document.createElement('span');
+          from.className = 'eml-from';
+          from.textContent = m.from || '(unknown sender)';
+          var subj = document.createElement('span');
+          subj.className = 'eml-subj';
+          subj.textContent = m.subject || m.snippet || '(no subject)';
+          main.appendChild(from);
+          main.appendChild(subj);
+          row.appendChild(dot);
+          row.appendChild(main);
+          ul.appendChild(row);
+        });
+        el('emlCount').textContent = messages.length + ' MESSAGES';
+      }
+      function setStatus(state, text) {
+        var s = el('emlStatus');
+        s.textContent = text;
+        if (state) s.setAttribute('data-state', state);
+        else s.removeAttribute('data-state');
+      }
+      function load() {
+        setStatus('', 'loading…');
+        fetchJSON('/api/gmail/messages?limit=20').then(function (data) {
+          if (data && data.error) {
+            render([]);
+            setStatus('partial', data.error.toUpperCase());
+            return;
+          }
+          var messages = (data && (data.messages || data.items)) || [];
+          render(messages);
+          setStatus(messages.length ? 'ok' : '', messages.length ? 'CONNECTED' : 'NO DATA');
+        }).catch(function () {
+          render([]);
+          setStatus('partial', 'OFFLINE');
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', load);
+      } else {
+        load();
+      }
+    })();
+  </script>
+</body>
+</html>

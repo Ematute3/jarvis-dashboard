@@ -129,6 +129,7 @@
     if (!el || el.dataset.scrambling === '1') return;
     const original = el.textContent;
     if (original.length < 3) return;
+    el.dataset.original = original;
     el.dataset.scrambling = '1';
 
     let frame = 0;
@@ -142,15 +143,30 @@
       frame++;
       if (frame > maxFrames) {
         clearInterval(interval);
+        el.dataset.intervalId = '';
         el.textContent = original;
         el.dataset.scrambling = '0';
       }
     }, 40);
+    el.dataset.intervalId = String(interval);
+  }
+
+  function cancel(el) {
+    if (!el) return;
+    if (el.dataset.intervalId) {
+      clearInterval(Number(el.dataset.intervalId));
+      el.dataset.intervalId = '';
+    }
+    if (el.dataset.original != null) {
+      el.textContent = el.dataset.original;
+    }
+    el.dataset.scrambling = '0';
   }
 
   function bindScramble() {
     $$('.widget-title, .panel-title, .module-name').forEach((el) => {
       el.addEventListener('mouseenter', () => scramble(el));
+      el.addEventListener('mouseleave', () => cancel(el));
     });
   }
 

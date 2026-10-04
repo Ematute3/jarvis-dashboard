@@ -55,6 +55,7 @@
     </nav>
 
     <div class="home-bar-right">
+      <a class="chip install-chip" id="installHint" hidden href="#" data-app-prompt title="Install JARVIS as an app">Install app</a>
       <button class="icon-btn" id="notifBtn" title="Upcoming assignments" aria-label="Upcoming assignments" aria-haspopup="dialog" aria-expanded="false" aria-controls="notifPanel">
         <span class="icon-glyph">◈</span>
         <span class="badge" id="notifBadge" hidden>0</span>
@@ -167,7 +168,7 @@
     <!-- Row 4: news, portfolio, goals -->
     <div class="widget widget-news c-news">
       <div class="widget-head">
-        <a class="widget-title widget-title-link" href="https://news.google.com" target="_blank" rel="noopener noreferrer">NEWS ↗</a>
+        <a class="widget-title widget-title-link" href="https://news.google.com/topics/WORLD" target="_blank" rel="noopener noreferrer">NEWS ↗</a>
         <span class="widget-tag" id="homeNewsDate">TODAY</span>
       </div>
       <ul class="news-links" id="homeNewsList">
@@ -177,7 +178,7 @@
 
     <a class="widget c-port" href="portfolio.html">
       <div class="widget-head">
-        <span class="widget-title">PORTFOLIO</span>
+        <span class="widget-title">MONEY</span>
         <span class="widget-tag">MONEY</span>
       </div>
       <div class="port-value">
@@ -315,5 +316,29 @@
   </script>
   <script src="native-launcher.js" defer></script>
   <script src="chatbot.js" defer></script>
+  <script>
+    /* PWA install hint: only show when (a) we are NOT already installed as
+       a standalone PWA and (b) the browser fires `beforeinstallprompt`.
+       Click → prompt native install; user can dismiss by closing the tab. */
+    (function () {
+      var hint = document.getElementById('installHint');
+      if (!hint) return;
+      var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone === true;
+      if (standalone) return;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        var deferred = e;
+        hint.hidden = false;
+        hint.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          deferred.prompt();
+          deferred.userChoice.then(function () {
+            hint.hidden = true;
+          });
+        }, { once: true });
+      });
+    })();
+  </script>
 </body>
 </html>

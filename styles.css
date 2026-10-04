@@ -297,6 +297,8 @@ body.boot .status-strip { filter: blur(8px); opacity: 0; }
   50%      { transform: scale(1.4); opacity: 0.5; }
 }
 
+#systemTime { transition: opacity .15s ease; }
+
 .topbar-right {
   display: flex;
   align-items: center;
@@ -340,6 +342,70 @@ body.boot .status-strip { filter: blur(8px); opacity: 0; }
   background: var(--c-orange);
   color: var(--c-bg);
   box-shadow: var(--glow-orange);
+}
+
+/* -------- Chat toggle (JARVIS assistant) — distinguished from notif bell --------
+   Inherits .icon-btn layout; adds a cyan "new" dot + one-shot pulse so the
+   affordance is discoverable on first load without being noisy afterwards. */
+.icon-btn.c-chat {
+  color: var(--c-cyan);
+  border-color: var(--c-line-strong);
+  box-shadow: var(--glow-cyan);
+}
+.icon-btn.c-chat .icon-glyph {
+  text-shadow: 0 0 8px rgba(0,229,255,0.7);
+}
+.icon-btn.c-chat::after {
+  /* small persistent "online/new" indicator dot */
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-cyan);
+  box-shadow: 0 0 6px var(--c-cyan), 0 0 10px rgba(0,229,255,0.5);
+}
+.icon-btn.c-chat {
+  /* one-shot entrance pulse so the eye lands here on page load */
+  animation: chatPulse 1400ms ease-out 1;
+}
+.icon-btn.c-chat:hover {
+  /* keep the indicator visible when the bell-pulse finishes */
+  transform: translateY(-1px);
+}
+@keyframes chatPulse {
+  0%   { transform: scale(0.85); box-shadow: 0 0 0 rgba(0,229,255,0.0); border-color: var(--c-line); }
+  35%  { transform: scale(1.15); box-shadow: 0 0 26px rgba(0,229,255,0.85); border-color: var(--c-cyan); }
+  70%  { transform: scale(1.00); box-shadow: var(--glow-cyan); border-color: var(--c-line-strong); }
+  100% { transform: scale(1.00); box-shadow: var(--glow-cyan); border-color: var(--c-line-strong); }
+}
+
+/* Optional PWA install hint chip — hidden by default, revealed by JS when
+   the browser fires `beforeinstallprompt`. Small, easy to ignore or dismiss. */
+.chip.install-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--c-cyan);
+  border-color: var(--c-line-strong);
+  background: rgba(0, 229, 255, 0.08);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+  cursor: pointer;
+  animation: installPulse 2.4s ease-in-out infinite;
+}
+.chip.install-chip:hover {
+  background: rgba(0, 229, 255, 0.16);
+  box-shadow: var(--glow-cyan);
+}
+.chip.install-chip[hidden] { display: none; }
+@keyframes installPulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(0,229,255,0.25); }
+  50%      { box-shadow: 0 0 14px rgba(0,229,255,0.55); }
 }
 
   /* -------- Notifications panel (toggled by .icon-btn) -------- */

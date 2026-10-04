@@ -115,6 +115,7 @@
       .then(function (res) {
         if (res.ok) {
           inputEl.value = '';
+          inputEl.focus();
           render(res.goals);
           setSuccess('Added.');
         } else {

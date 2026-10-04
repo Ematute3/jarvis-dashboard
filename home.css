@@ -245,6 +245,10 @@ a.widget { cursor: pointer; }
   border-radius: var(--r-2);
   cursor: pointer;
 }
+.goal-add:active {
+  background: rgba(0, 229, 255, 0.85);
+  box-shadow: var(--glow-cyan);
+}
 
 /* Shared card sizing (used by both desktop and mobile layouts) */
 .widget {

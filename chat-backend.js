@@ -31,18 +31,33 @@ const MINIMAX_MODEL   = process.env.MINIMAX_MODEL   || 'MiniMax-M2';
 // end-to-end without standing up the real backend.
 const JARVIS_API_BASE = process.env.JARVIS_API_BASE || 'http://localhost:8765';
 
-// TODO(prod-backend): point at the real "create calendar event" route.
+// BACKEND CAVEAT: this URL must point at an endpoint that:
+//   - For add_event: takes { summary, description, start, end, attendees }
+//                    and inserts into Google Calendar via calendar.events.insert
+//   - For mark_email_read: takes { messageIds: string[] }
+//                    and removes the UNREAD label via gmail.users.messages.modify
+// See docs/SERVER.md for a complete reference implementation the production
+// backend team can adapt.
 const JARVIS_CALENDAR_NEW_URL = process.env.JARVIS_CALENDAR_NEW_URL || '';
 
-// TODO(prod-backend): implement POST /api/gmail/messages/:id/read, then
-// set this to /api/gmail/messages and the handler will append
-// "/<id>/read" automatically.
+// BACKEND CAVEAT: this URL must point at an endpoint that:
+//   - For add_event: takes { summary, description, start, end, attendees }
+//                    and inserts into Google Calendar via calendar.events.insert
+//   - For mark_email_read: takes { messageIds: string[] }
+//                    and removes the UNREAD label via gmail.users.messages.modify
+// See docs/SERVER.md for a complete reference implementation the production
+// backend team can adapt.
 const JARVIS_GMAIL_MARK_READ_URL = process.env.JARVIS_GMAIL_MARK_READ_URL || '';
 
 // Cap the tool-call loop so a runaway LLM can't burn the request budget.
 // One iteration = one round-trip to the LLM (which may itself contain
 // several tool_calls that we all execute and append before re-calling).
-const MAX_TOOL_ITERATIONS = 5;
+// Override at runtime with TOOL_MAX_ITERATIONS (positive integer); default 10.
+const MAX_TOOL_ITERATIONS = (() => {
+  const raw = process.env.TOOL_MAX_ITERATIONS;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+})();
 
 // --- System prompt --------------------------------------------------------
 const SYSTEM_PROMPT = `You are JARVIS, the user's personal dashboard assistant.
@@ -300,7 +315,10 @@ export async function executeToolCall(name, args) {
         const query = typeof args.query === 'string' ? args.query : '';
         if (!query) return { ok: false, error: 'query is required.' };
         const limit = Number.isFinite(args.limit) && args.limit > 0 ? args.limit : 25;
-        const r = await fetch(`${JARVIS_API_BASE}/api/gmail/messages?limit=${encodeURIComponent(limit)}`);
+        const params = new URLSearchParams();
+        if (query) params.set('q', query);
+        if (limit) params.set('maxResults', String(limit));
+        const r = await fetch(`${JARVIS_API_BASE}/api/gmail/messages?` + params.toString());
         if (!r.ok) return { ok: false, error: `Gmail HTTP ${r.status}` };
         const data = await r.json();
         const msgs = Array.isArray(data) ? data : (data.messages || []);
@@ -404,10 +422,11 @@ export async function handleChat(req, res) {
     }
   }
 
-  // Hit the iteration cap. Surface what we have rather than hanging.
+  // Hit the iteration cap without a final assistant message. Surface a
+  // structured error rather than hanging the request.
   res.json({
-    ok: true,
-    reply: "I got stuck in a loop trying to answer that — could you rephrase?",
+    ok: false,
+    error: 'Agent hit its tool-call limit (' + MAX_TOOL_ITERATIONS + ' rounds) without a final answer. Try a smaller question.',
     tool_calls: allToolCalls,
   });
 }

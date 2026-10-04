@@ -86,7 +86,10 @@
 
   function rotateTile() {
     if (!headlines.length) {
-      renderTile([], 'News unavailable — check your internet connection.');
+      var emptyMsg = _loadError
+        ? "Couldn't reach the news feed — try again later."
+        : "No headlines right now.";
+      renderTile([], emptyMsg);
       return;
     }
     var window8 = [];

@@ -3,10 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "start": "node server.js",
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build",
     "icon": "tauri icon ./apple-touch-icon.png"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^144.0.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0"

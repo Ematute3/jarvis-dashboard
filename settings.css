@@ -1,0 +1,325 @@
+/* ============================================================
+   SETTINGS PAGE · JARVIS-STYLE HUD · STYLES
+   File: settings.css
+   Reuses the design tokens declared in styles.css. Adds only
+   what's specific to /settings.html: topbar layout, page grid,
+   credential forms, status pills, and a save toast.
+   ============================================================ */
+
+/* -------- Topbar override for the settings page --------
+   Same .topbar surface/backdrop as the main dashboard, but the
+   grid columns rebalance for back-link | title | meta instead
+   of brand | nav | actions. */
+.settings-bar {
+  grid-template-columns: auto 1fr auto;
+}
+
+.topbar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  color: var(--c-ink-dim);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  background: rgba(10, 14, 23, 0.4);
+  transition: all 0.2s ease;
+}
+.topbar-back:hover {
+  color: var(--c-cyan);
+  border-color: var(--c-line-strong);
+  box-shadow: var(--glow-cyan);
+  transform: translateY(-1px);
+}
+.topbar-back:active { transform: translateY(0); }
+
+.topbar-title {
+  justify-self: center;
+  font-family: var(--f-display);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.35em;
+  color: var(--c-cyan);
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.45);
+}
+
+.topbar-meta {
+  justify-self: end;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--c-ink-dim);
+  padding: 4px 10px;
+  border: 1px solid var(--c-line-soft);
+  border-radius: var(--r-1);
+}
+.topbar-meta[data-state="ok"] {
+  color: var(--c-cyan);
+  border-color: var(--c-line);
+}
+.topbar-meta[data-state="partial"] {
+  color: var(--c-orange);
+  border-color: rgba(255, 145, 0, 0.4);
+}
+
+/* -------- Page grid --------
+   Single column of panels on mobile; two-up on desktop. */
+.page {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding: 18px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+@media (min-width: 980px) {
+  .page { grid-template-columns: 1fr 1fr; }
+  .page .panel[data-section="google"] { grid-column: 1 / -1; }
+}
+
+/* -------- Panel copy blurb (between header and form) -------- */
+.panel-blurb {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--c-ink-dim);
+}
+
+/* -------- Credential form -------- */
+.cred-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--c-ink-dim);
+  text-transform: uppercase;
+}
+
+.cred-form input[type="text"],
+.cred-form input[type="password"],
+.cred-form input[type="number"] {
+  font-family: var(--f-mono);
+  font-size: 13px;
+  color: var(--c-ink);
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  padding: 10px 12px;
+  width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cred-form input::placeholder {
+  color: var(--c-ink-faint);
+  font-family: var(--f-mono);
+}
+.cred-form input:focus {
+  outline: none;
+  border-color: var(--c-cyan);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+}
+.cred-form input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.field--readonly {
+  border: 1px dashed var(--c-line-soft);
+  border-radius: var(--r-2);
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.22);
+}
+.readonly-value {
+  display: block;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--c-cyan);
+  word-break: break-all;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
+
+/* -------- Saved preview (masked value shown beneath the input) -------- */
+.saved-preview {
+  margin: -4px 0 0;
+  padding: 8px 10px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--c-ink-faint);
+  background: rgba(0, 0, 0, 0.22);
+  border-left: 2px solid var(--c-line-soft);
+  border-radius: var(--r-1);
+}
+.saved-preview:empty,
+.saved-preview[data-empty="true"] {
+  opacity: 0.6;
+}
+
+.field-help {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--c-ink-faint);
+  font-family: var(--f-mono);
+}
+.field-help a {
+  color: var(--c-cyan);
+  border-bottom: 1px dashed var(--c-line);
+}
+.field-help a:hover { color: var(--c-ink); border-color: var(--c-cyan); }
+.field-help code {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--c-ink);
+  padding: 1px 5px;
+  background: rgba(0, 229, 255, 0.08);
+  border-radius: var(--r-1);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* -------- Primary button --------
+   Echoes the chat-send look: cyan fill, dark text, mono font. */
+.primary-btn {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  padding: 10px 18px;
+  color: var(--c-bg);
+  background: var(--c-cyan);
+  border: 1px solid var(--c-cyan);
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--glow-cyan);
+}
+.primary-btn:hover {
+  background: var(--c-ink);
+  border-color: var(--c-ink);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.6);
+  transform: translateY(-1px);
+}
+.primary-btn:active { transform: translateY(0); }
+.primary-btn:disabled {
+  opacity: 0.5;
+  cursor: progress;
+  box-shadow: none;
+}
+
+/* -------- Status pill (panel header right side) --------
+   data-state values used:
+     - unknown   : not yet fetched from server
+     - ok        : configured (cyan dot)
+     - missing   : not set    (orange dot, alert tone)
+   Same visual language as the chat status indicator. */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--c-ink-dim);
+  padding: 3px 8px;
+  border: 1px solid var(--c-line-soft);
+  border-radius: var(--r-1);
+  text-transform: uppercase;
+}
+.status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-ink-faint);
+  box-shadow: 0 0 4px var(--c-ink-faint);
+  flex-shrink: 0;
+}
+.status[data-state="unknown"]::before {
+  background: var(--c-ink-faint);
+  box-shadow: 0 0 4px var(--c-ink-faint);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.status[data-state="ok"] {
+  color: var(--c-cyan);
+  border-color: var(--c-line);
+}
+.status[data-state="ok"]::before {
+  background: var(--c-cyan);
+  box-shadow: 0 0 8px var(--c-cyan);
+}
+.status[data-state="missing"] {
+  color: var(--c-orange);
+  border-color: rgba(255, 145, 0, 0.4);
+}
+.status[data-state="missing"]::before {
+  background: var(--c-orange);
+  box-shadow: 0 0 8px var(--c-orange);
+}
+
+/* Inline variant — sits inside a field label, no border, smaller. */
+.status--inline {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  padding: 1px 6px;
+  border: 1px solid var(--c-line-soft);
+  text-transform: uppercase;
+}
+
+/* -------- Toast --------
+   Reuses the open/close transform pattern from .notif-panel.
+   Fixed to the lower-right, briefly slides up + fades, then auto-hides. */
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  max-width: 320px;
+  padding: 10px 14px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--c-ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+  z-index: 1000;
+}
+.toast.open {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast.ok {
+  color: var(--c-cyan);
+  border-color: var(--c-line-strong);
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.3), 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+.toast.err {
+  color: var(--c-orange);
+  border-color: rgba(255, 145, 0, 0.5);
+  box-shadow: 0 0 18px rgba(255, 145, 0, 0.3), 0 6px 24px rgba(0, 0, 0, 0.45);
+}

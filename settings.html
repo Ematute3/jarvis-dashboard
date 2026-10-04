@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080c16" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="settings.css" />
+  <title>JARVIS · Settings</title>
+</head>
+<body class="settings-page">
+
+  <!-- ===== Top bar: back to dashboard · page title · config summary ===== -->
+  <header class="topbar settings-bar" role="banner">
+    <a class="topbar-back" href="index.html" title="Back to dashboard">← DASHBOARD</a>
+    <div class="topbar-title">SETUP &amp; CREDENTIALS</div>
+    <div class="topbar-meta" id="statusMeta">checking…</div>
+  </header>
+
+  <main class="page" role="main">
+
+    <!-- ===== Section 1: MiniMax API ===== -->
+    <section class="panel" data-section="minimax">
+      <header class="panel-header">
+        <span class="panel-tag">AI</span>
+        <h2 class="panel-title">MINIMAX</h2>
+        <span class="status" id="minimaxStatus" data-state="unknown">checking…</span>
+      </header>
+      <p class="panel-blurb">
+        Powers JARVIS chat. Single API key from the MiniMax dashboard.
+      </p>
+      <form id="minimaxForm" class="cred-form" autocomplete="off">
+        <label class="field">
+          <span class="field-label">API key</span>
+          <input
+            type="password"
+            id="minimaxApiKey"
+            name="minimaxApiKey"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="paste your API key here"
+          />
+        </label>
+        <p class="saved-preview" id="minimaxSaved">Currently saved: —</p>
+        <p class="field-help">
+          Get one at
+          <a href="https://minimaxi.com" target="_blank" rel="noopener noreferrer">minimaxi.com</a>
+          → API Keys.
+        </p>
+        <div class="form-actions">
+          <button type="submit" class="primary-btn" data-submit="minimax">Save MiniMax key</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===== Section 2: Google OAuth ===== -->
+    <section class="panel" data-section="google">
+      <header class="panel-header">
+        <span class="panel-tag">OAUTH</span>
+        <h2 class="panel-title">GOOGLE</h2>
+        <span class="status" id="googleStatus" data-state="unknown">checking…</span>
+      </header>
+      <p class="panel-blurb">
+        Calendar + Gmail access. Create a Web Application OAuth client in Google Cloud
+        and add the redirect URI shown below.
+      </p>
+      <form id="googleForm" class="cred-form" autocomplete="off">
+        <label class="field">
+          <span class="field-label">
+            Client ID
+            <span class="status status--inline" id="googleClientIdStatus" data-state="unknown">…</span>
+          </span>
+          <input
+            type="text"
+            id="googleClientId"
+            name="googleClientId"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="xxxxx.apps.googleusercontent.com"
+          />
+        </label>
+        <p class="saved-preview" id="googleClientIdSaved">Currently saved: —</p>
+
+        <label class="field">
+          <span class="field-label">
+            Client secret
+            <span class="status status--inline" id="googleClientSecretStatus" data-state="unknown">…</span>
+          </span>
+          <input
+            type="password"
+            id="googleClientSecret"
+            name="googleClientSecret"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="paste the client secret"
+          />
+        </label>
+        <p class="saved-preview" id="googleClientSecretSaved">Currently saved: —</p>
+
+        <div class="field field--readonly">
+          <span class="field-label">Redirect URI (add to Google Cloud Console)</span>
+          <code class="readonly-value" id="googleRedirectUri">—</code>
+        </div>
+
+        <p class="field-help">
+          Create a Web Application OAuth client at
+          <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer">console.cloud.google.com</a>.
+          Add the redirect URI shown above. Required scopes:
+          <code>calendar.events</code> + <code>gmail.modify</code>.
+        </p>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-btn" data-submit="google">Save Google OAuth</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===== Section 3: Tool behavior ===== -->
+    <section class="panel" data-section="tool">
+      <header class="panel-header">
+        <span class="panel-tag">AGENT</span>
+        <h2 class="panel-title">TOOL BEHAVIOR</h2>
+        <span class="status" id="toolStatus" data-state="ok">tunable</span>
+      </header>
+      <p class="panel-blurb">
+        Caps how many tool calls JARVIS may chain per chat turn. Lower values keep
+        long tasks safer; higher values let the agent follow longer chains.
+      </p>
+      <form id="toolForm" class="cred-form" autocomplete="off">
+        <label class="field">
+          <span class="field-label">Max tool iterations (1–20)</span>
+          <input
+            type="number"
+            id="toolMaxIterations"
+            name="toolMaxIterations"
+            min="1"
+            max="20"
+            step="1"
+          />
+        </label>
+        <p class="field-help">
+          Applies to the next chat turn. Saved server-side; no restart required.
+        </p>
+        <div class="form-actions">
+          <button type="submit" class="primary-btn" data-submit="tool">Save tool settings</button>
+        </div>
+      </form>
+    </section>
+
+  </main>
+
+  <!-- Save/error toast — mirrors the dashboard's notif-panel open/close pattern -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="settings.js" defer></script>
+</body>
+</html>

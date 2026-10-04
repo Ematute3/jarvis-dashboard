@@ -50,7 +50,10 @@
       <a class="chip" href="syllabus.html">LIBRARY</a>
       <a class="chip" href="statements.html">STATEMENTS</a>
       <a class="chip" href="https://elearn.ucr.edu" target="_blank" rel="noopener noreferrer">CANVAS ↗</a>
-      <a class="chip" href="settings.html">SETTINGS</a>
+      <a class="chip" href="settings.html" id="settingsChip" data-configured="unknown">
+        SETTINGS
+        <span class="chip-badge" id="settingsBadge" hidden></span>
+      </a>
       <a class="chip" href="mobile.html" data-view="mobile">PHONE VIEW</a>
     </nav>
 
@@ -316,6 +319,7 @@
   </script>
   <script src="native-launcher.js" defer></script>
   <script src="chatbot.js" defer></script>
+  <script src="settings-badge.js" defer></script>
   <script>
     /* PWA install hint: only show when (a) we are NOT already installed as
        a standalone PWA and (b) the browser fires `beforeinstallprompt`.

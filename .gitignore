@@ -31,3 +31,4 @@ build/
 # Standalone server runtime
 /tokens.json
 /data/
+/runtime-config.json

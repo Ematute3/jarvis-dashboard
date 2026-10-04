@@ -32,7 +32,9 @@ const express      = require('express');
 const cookieParser = require('cookie-parser');
 const { google }   = require('googleapis');
 
-// --- Config (env-driven) ----------------------------------------------
+const config = require('./config');
+
+// --- Config (runtime-config.json, hot-reload via /api/config) ----------
 const PORT = parseInt(process.env.PORT || '8765', 10);
 const ROOT = __dirname;
 
@@ -42,19 +44,28 @@ const TOKEN_STORE_PATH = path.resolve(
 );
 const GOALS_FILE = path.join(ROOT, 'data', 'goals.json');
 
-const TOOL_MAX_ITERATIONS = parseInt(
-  process.env.TOOL_MAX_ITERATIONS || '10',
-  10
-);
+// --- Bootstrap: on first run, copy env vars into runtime-config.json ---
+// When runtime-config.json doesn't exist yet, env vars (from .env) are
+// the source of truth. We write any set env values into runtime-config
+// once, so subsequent /api/config edits persist and take effect without
+// a server restart. After bootstrap, runtime code reads ONLY via
+// config.get(...).
+(function bootstrapRuntimeConfig() {
+  const cur = config.getAll();
+  const patch = {};
+  if (!cur.minimaxApiKey      && process.env.MINIMAX_API_KEY)      patch.minimaxApiKey      = process.env.MINIMAX_API_KEY;
+  if (!cur.minimaxBaseUrl     && process.env.MINIMAX_BASE_URL)     patch.minimaxBaseUrl     = process.env.MINIMAX_BASE_URL;
+  if (!cur.minimaxModel       && process.env.MINIMAX_MODEL)        patch.minimaxModel       = process.env.MINIMAX_MODEL;
+  if (!cur.googleClientId     && process.env.GOOGLE_CLIENT_ID)     patch.googleClientId     = process.env.GOOGLE_CLIENT_ID;
+  if (!cur.googleClientSecret && process.env.GOOGLE_CLIENT_SECRET) patch.googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!cur.googleRedirectUri) {
+    patch.googleRedirectUri = process.env.GOOGLE_REDIRECT_URI
+      || `http://127.0.0.1:${PORT}/oauth/callback`;
+  }
+  if (!cur.toolMaxIterations  && process.env.TOOL_MAX_ITERATIONS)  patch.toolMaxIterations  = parseInt(process.env.TOOL_MAX_ITERATIONS, 10);
+  if (Object.keys(patch).length > 0) config.save(patch);
+})();
 
-const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY || '';
-const MINIMAX_BASE    = process.env.MINIMAX_BASE_URL || 'https://api.MiniMax.com/v1';
-const MINIMAX_MODEL   = process.env.MINIMAX_MODEL    || 'MiniMax-M2';
-
-const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID     || '';
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-const GOOGLE_REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI
-  || `http://127.0.0.1:${PORT}/oauth/callback`;
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/gmail.modify',
@@ -104,9 +115,9 @@ function saveTokens(t) { return atomicWriteJSON(TOKEN_STORE_PATH, t); }
 
 function oauth2Client() {
   return new google.auth.OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
-    GOOGLE_REDIRECT_URI
+    config.get('googleClientId'),
+    config.get('googleClientSecret'),
+    config.get('googleRedirectUri')
   );
 }
 
@@ -120,6 +131,13 @@ function authedClientOrNull() {
   // googleapis will auto-refresh when expiry_date approaches if a
   // refresh_token is present in the credentials.
   return c;
+}
+
+// Tool-call loop cap. Re-reads from runtime-config.json on every call
+// so /api/config changes take effect immediately.
+function toolMaxIterations() {
+  const v = parseInt(config.get('toolMaxIterations'), 10);
+  return Number.isFinite(v) && v > 0 ? v : 10;
 }
 
 // Internal fetch — used by /api/chat's tool loop to call our own server.
@@ -217,10 +235,10 @@ app.use((req, res, next) => {
 // --- OAuth --------------------------------------------------------------
 
 app.get('/oauth/start', (req, res) => {
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  if (!config.get('googleClientId') || !config.get('googleClientSecret')) {
     return res
       .status(500)
-      .send('Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env.');
+      .send('Google OAuth not configured. Set googleClientId and googleClientSecret via the settings page (or .env on first run).');
   }
   const state = crypto.randomBytes(16).toString('hex');
   res.cookie('oauth_state', state, {
@@ -277,6 +295,43 @@ app.get('/api/prices',                    (req, res) => res.json({ quotes: [], f
 app.get('/api/portfolio/history',         (req, res) => res.json([]));
 
 app.get('/api/canvas/courses/:id/assignments', (req, res) => res.json([]));
+
+// --- Config API ---------------------------------------------------------
+// GET  /api/config — returns the current config with secrets masked.
+// PUT  /api/config — accepts a partial patch of allowed keys.
+
+app.get('/api/config', (req, res) => {
+  const c = config.getAll();
+  res.json({
+    minimaxApiKey:         config.mask(c.minimaxApiKey),
+    minimaxApiKeySet:      !!c.minimaxApiKey,
+    minimaxBaseUrl:        c.minimaxBaseUrl,
+    minimaxModel:          c.minimaxModel,
+    googleClientId:        config.mask(c.googleClientId),
+    googleClientIdSet:     !!c.googleClientId,
+    googleClientSecret:    config.mask(c.googleClientSecret),
+    googleClientSecretSet: !!c.googleClientSecret,
+    googleRedirectUri:     c.googleRedirectUri,
+    toolMaxIterations:     c.toolMaxIterations,
+    configPath:            config.CONFIG_PATH,
+  });
+});
+
+app.put('/api/config', (req, res) => {
+  const allowed = [
+    'minimaxApiKey', 'minimaxBaseUrl', 'minimaxModel',
+    'googleClientId', 'googleClientSecret', 'googleRedirectUri',
+    'toolMaxIterations',
+  ];
+  const patch = {};
+  for (const k of allowed) {
+    if (k in req.body && (typeof req.body[k] === 'string' || typeof req.body[k] === 'number')) {
+      patch[k] = req.body[k];
+    }
+  }
+  config.save(patch);
+  res.json({ ok: true });
+});
 
 // --- Goals API ----------------------------------------------------------
 
@@ -564,19 +619,22 @@ const TOOL_DEFINITIONS = [
 ];
 
 async function callMinimax(messages) {
-  if (!MINIMAX_API_KEY) {
-    return { ok: false, error: 'MINIMAX_API_KEY is not configured.' };
+  const apiKey = config.get('minimaxApiKey');
+  if (!apiKey) {
+    return { ok: false, error: 'minimaxApiKey is not configured.' };
   }
+  const base  = config.get('minimaxBaseUrl');
+  const model = config.get('minimaxModel');
   let r;
   try {
-    r = await fetch(`${MINIMAX_BASE}/chat/completions`, {
+    r = await fetch(`${base}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${MINIMAX_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: MINIMAX_MODEL,
+        model,
         messages,
         tools: TOOL_DEFINITIONS,
       }),
@@ -704,7 +762,7 @@ app.post('/api/chat', async (req, res) => {
   const messages = [{ role: 'system', content: SYSTEM_PROMPT }, ...userMessages];
   const allToolCalls = [];
 
-  for (let i = 0; i < TOOL_MAX_ITERATIONS; i++) {
+  for (let i = 0; i < toolMaxIterations(); i++) {
     const assistant = await callMinimax(messages);
     if (!assistant || assistant.ok === false) {
       return res.status(502).json({
@@ -811,11 +869,13 @@ app.use(express.static(ROOT, {
 // --- Boot --------------------------------------------------------------
 
 app.listen(PORT, () => {
+  const c = config.getAll();
   console.log(`\n  JARVIS dashboard server`);
   console.log(`  → http://localhost:${PORT}/index.html`);
-  if (!MINIMAX_API_KEY)        console.warn('  ! MINIMAX_API_KEY is not set (chat will return 502).');
-  if (!GOOGLE_CLIENT_ID)       console.warn('  ! GOOGLE_CLIENT_ID is not set (Google features disabled).');
-  if (!GOOGLE_CLIENT_SECRET)   console.warn('  ! GOOGLE_CLIENT_SECRET is not set.');
+  if (!c.minimaxApiKey)      console.warn('  ! minimaxApiKey is not set (chat will return 502).');
+  if (!c.googleClientId)     console.warn('  ! googleClientId is not set (Google features disabled).');
+  if (!c.googleClientSecret) console.warn('  ! googleClientSecret is not set.');
   console.log(`  Tokens → ${TOKEN_STORE_PATH}`);
-  console.log(`  Goals  → ${GOALS_FILE}\n`);
+  console.log(`  Goals  → ${GOALS_FILE}`);
+  console.log(`  Config → ${config.CONFIG_PATH}\n`);
 });

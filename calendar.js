@@ -1,494 +1,617 @@
 /* ============================================================
-   MASTER DASHBOARD · CALENDAR PAGE · APP
+   MASTER DASHBOARD · CALENDAR VIEW · CLIENT SCRIPT
    File: calendar.js
-   Multi-tab week view: Overview, Classes, Meetings, Assignments,
-   Study (placeholder). Fetches /api/calendar/aggregated once,
-   caches it, and re-renders locally on tab / week navigation.
+   Plain JS, no framework. Source of truth is /api/calendar/aggregated
+   (which fans out to Google Calendar + Canvas + UCR holidays), with
+   /api/agenda for the day-detail modal and /api/calendar/events/new
+   for creating events.
    ============================================================ */
 
 (function () {
   'use strict';
 
-  var $ = function (id) { return document.getElementById(id); };
+  /* -----------------------------------------------------------
+     Aggregator event:
+     {
+         kind:        'class' | 'schedule-meeting' | 'meeting'
+                    | 'personal' | 'assignment' | 'holiday',
+         title:       string,
+         date:        'YYYY-MM-DD',
+         start:       'HH:MM' | null (all-day),
+         end:         'HH:MM' | null,
+         durationMin: number,
+         allDay:      boolean,
+         location?:   string,
+         courseId?:   string,
+         source?:     'schedule' | 'calendar' | 'canvas' | 'holidays',
+         color?:      string (hex)
+       }
+     ----------------------------------------------------------- */
 
-  var DAY_SHORT = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-  var MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  var KIND_COLORS = {
-    'class': '#00E5FF',
-    'schedule-meeting': '#00E5FF',
-    'meeting': '#2979FF',
-    'personal': '#7EE2FF',
-    'assignment': '#FF9100',
-    'holiday': '#FF9100',
-  };
+  var NOW = new Date();
+  var MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+  var DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-  /* ---------- State ---------- */
-  var state = {
-    items: [],        // aggregated events from the server
-    holidays: [],     // extracted separately so we can render bands regardless of tab
-    tab: 'overview',  // active tab key
-    anchor: null,     // Date object for any day in the displayed week
-    minH: 8,
-    maxH: 22,
-  };
-
-  /* ---------- Date helpers ---------- */
-  function startOfWeekMon(d) {
-    var out = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    var dow = (out.getDay() + 6) % 7; // Mon=0..Sun=6
-    out.setDate(out.getDate() - dow);
-    return out;
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function isoDate(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
   }
+  function todayISO() { return isoDate(NOW); }
   function addDays(d, n) {
-    var out = new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-    return out;
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    x.setDate(x.getDate() + n);
+    return x;
   }
-  function isoDay(d) {
-    var y = d.getFullYear();
-    var m = String(d.getMonth() + 1);
-    var dd = String(d.getDate());
-    return y + '-' + (m.length < 2 ? '0' + m : m) + '-' + (dd.length < 2 ? '0' + dd : dd);
+  function addMonths(d, n) {
+    var x = new Date(d.getFullYear(), d.getMonth() + n, d.getDate());
+    return x;
   }
-  function monthLabel(d) {
-    return MONTH_SHORT[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  function mondayOfWeek(d) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var dow = (x.getDay() + 6) % 7; // 0 = Mon
+    x.setDate(x.getDate() - dow);
+    return x;
   }
-  function monthRangeLabel(start, end) {
-    // start = Mon, end = Sun (start + 6)
-    if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
-      return MONTH_SHORT[start.getMonth()] + ' ' + start.getDate() + '\u2013' + end.getDate() + ', ' + start.getFullYear();
-    }
-    if (start.getFullYear() === end.getFullYear()) {
-      return MONTH_SHORT[start.getMonth()] + ' ' + start.getDate() + ' \u2013 ' + MONTH_SHORT[end.getMonth()] + ' ' + end.getDate() + ', ' + start.getFullYear();
-    }
-    return monthLabel(start) + ' \u2013 ' + monthLabel(end);
+  function formatLongDate(d) {
+    return DAYS[d.getDay()] + ', ' + MONTHS[d.getMonth()] + ' ' +
+           d.getDate() + ', ' + d.getFullYear();
   }
-  function time12(hhmm) {
+  function escapeText(s) { return String(s == null ? '' : s); }
+  function fmtTime12(hhmm) {
     if (!hhmm) return '';
-    var p = String(hhmm).split(':');
-    if (p.length < 2) return hhmm;
-    var h = parseInt(p[0], 10);
-    var m = p[1];
-    var ap = h >= 12 ? 'p' : 'a';
-    var h12 = ((h + 11) % 12) + 1;
-    return h12 + (m === '00' ? '' : ':' + m) + ap;
+    var h = parseInt(hhmm.slice(0, 2), 10);
+    var m = hhmm.slice(3, 5);
+    return ((h % 12) || 12) + ':' + m + (h < 12 ? ' AM' : ' PM');
   }
 
-  /* ---------- Fetch ---------- */
+  // Map aggregator kind → CSS category class so each kind has a color.
+  // Holidays get their own background tint (orange-soft).
+  function kindToClass(kind) {
+    switch (kind) {
+      case 'class':            return 'cat-class';
+      case 'schedule-meeting': return 'cat-meeting';
+      case 'meeting':          return 'cat-meeting';
+      case 'personal':         return 'cat-personal';
+      case 'assignment':       return 'cat-assignment';
+      case 'holiday':          return 'cat-holiday';
+      default:                 return 'cat-work';
+    }
+  }
+
+  // ---------- DOM helpers ----------
+  function $(sel, root) { return (root || document).querySelector(sel); }
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      for (var k in attrs) {
+        if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+        if (k === 'class') node.className = attrs[k];
+        else if (k === 'text') node.textContent = attrs[k];
+        else if (k === 'html') node.innerHTML = attrs[k];
+        else if (k === 'dataset') {
+          for (var d in attrs.dataset) {
+            if (!Object.prototype.hasOwnProperty.call(attrs.dataset, d)) continue;
+            node.dataset[d] = attrs.dataset[d];
+          }
+        }
+        else node.setAttribute(k, attrs[k]);
+      }
+    }
+    if (children) {
+      for (var i = 0; i < children.length; i++) {
+        var c = children[i];
+        if (c == null) continue;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      }
+    }
+    return node;
+  }
   function fetchJSON(url) {
     return fetch(url, { credentials: 'same-origin' }).then(function (r) {
-      if (!r.ok) {
-        return r.json().catch(function () { return { error: 'HTTP ' + r.status }; }).then(function (d) {
-          d._status = r.status;
-          return d;
-        });
-      }
-      return r.json();
+      return r.json().catch(function () { return null; }).then(function (data) {
+        return { ok: r.ok, status: r.status, data: data };
+      });
     });
   }
-  function loadAggregated() {
-    setStatus('', 'loading\u2026');
-    var rb = $('calRefresh');
-    if (rb) rb.disabled = true;
-    return fetchJSON('/api/calendar/aggregated').then(function (data) {
-      if (rb) rb.disabled = false;
-      if (data && data.error) {
-        setStatus('partial', String(data.error).toUpperCase());
-        state.items = [];
-        state.holidays = [];
-        renderSub('Server returned: ' + data.error);
-        renderGrid();
+
+  // ---------- App state ----------
+  var state = {
+    events: [],       // aggregator events (all kinds)
+    error: null,
+    weekAnchor: new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate()),
+    monthAnchor: new Date(NOW.getFullYear(), NOW.getMonth(), 1),
+    view: 'day',
+  };
+
+  // ---------- Event card builders ----------
+  function cardFor(ev) {
+    var startStr = (ev.allDay || ev.start == null) ? 'ALL DAY' : escapeText(ev.start);
+    var sub = (ev.durationMin && !ev.allDay && ev.start != null)
+      ? (ev.durationMin + 'm')
+      : '';
+    return el('article', {
+      class: 'cal-event ' + kindToClass(ev.kind),
+      dataset: { id: ev.id || '', date: ev.date || '', kind: ev.kind || '' },
+    }, [
+      el('span', { class: 'cal-event-time', text: startStr + (sub ? ' \u00b7 ' + sub : '') }),
+      el('span', { class: 'cal-event-title', text: escapeText(ev.title) }),
+    ]);
+  }
+  function dayRowCard(ev) {
+    var start = (ev.allDay || ev.start == null) ? 'ALL DAY' : escapeText(ev.start);
+    var sub = (ev.durationMin && !ev.allDay && ev.start != null)
+      ? (ev.durationMin + 'm')
+      : '';
+    return el('article', {
+      class: 'cal-event ' + kindToClass(ev.kind),
+      dataset: { id: ev.id || '', date: ev.date || '' },
+    }, [
+      el('div', { class: 'cal-event-time-col', text: start }),
+      el('div', null, [
+        el('h3', { class: 'cal-event-title', text: escapeText(ev.title) }),
+        (ev.location || ev.courseId)
+          ? el('div', { class: 'cal-event-meta' }, [
+              ev.location ? el('span', { class: 'cal-event-tag', text: '@ ' + escapeText(ev.location) }) : null,
+              ev.courseId ? el('span', { class: 'cal-event-tag', text: '#' + escapeText(ev.courseId) }) : null,
+            ])
+          : null,
+      ]),
+      sub ? el('div', { class: 'cal-event-time-col', text: sub }) : null,
+    ]);
+  }
+
+  // ---------- DAY view ----------
+  function renderDayView(events, anchorDate) {
+    var dayISO = isoDate(anchorDate);
+    var dayEvents = events
+      .filter(function (e) { return e && e.date === dayISO; })
+      .filter(function (e) { return e.kind !== 'holiday'; })
+      .sort(function (a, b) {
+        return (a.start || '99:99') < (b.start || '99:99') ? -1
+             : (a.start || '99:99') > (b.start || '99:99') ?  1 : 0;
+      });
+
+    $('#dayViewTitle').textContent = formatLongDate(anchorDate).toUpperCase();
+    $('#dayViewCount').textContent = dayEvents.length + ' EVENTS';
+
+    var list = $('#dayTimeline');
+    list.innerHTML = '';
+    list.appendChild(el('li', { class: 'cal-day-agenda' }, [
+      dayEvents.length === 0
+        ? el('div', { class: 'cal-day-empty', text: 'Nothing scheduled today. Pick another day with the week or month view.' })
+        : dayEvents.map(dayRowCard),
+    ]));
+  }
+
+  // ---------- WEEK view ----------
+  function renderWeekView(events, anchorDate) {
+    var monday = mondayOfWeek(anchorDate);
+    var sunday = addDays(monday, 6);
+
+    $('#weekViewTitle').textContent = 'WEEK VIEW';
+    $('#weekViewRange').textContent =
+      pad(monday.getMonth() + 1) + '/' + pad(monday.getDate()) +
+      ' \u2192 ' + pad(sunday.getMonth() + 1) + '/' + pad(sunday.getDate()) +
+      ' \u00b7 ' + sunday.getFullYear();
+
+    var grid = $('#weekGrid');
+    grid.innerHTML = '';
+
+    var dayLabels = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+    var tISO = todayISO();
+    for (var i = 0; i < 7; i++) {
+      var d = addDays(monday, i);
+      var dISO = isoDate(d);
+      var isToday = (dISO === tISO);
+
+      var col = el('div', {
+        class: 'cal-week-col' + (isToday ? ' is-today' : ''),
+        dataset: { date: dISO },
+      });
+
+      col.appendChild(el('div', { class: 'cal-week-col-header' }, [
+        document.createTextNode(dayLabels[i]),
+        el('span', {
+          class: 'cal-week-col-num',
+          text: pad(d.getMonth() + 1) + '/' + pad(d.getDate()),
+        }),
+      ]));
+
+      var dayEvents = events
+        .filter(function (e) { return e && e.date === dISO; })
+        .filter(function (e) { return e.kind !== 'holiday'; })
+        .sort(function (a, b) {
+          return (a.start || '99:99') < (b.start || '99:99') ? -1
+               : (a.start || '99:99') > (b.start || '99:99') ?  1 : 0;
+        });
+
+      for (var j = 0; j < dayEvents.length; j++) col.appendChild(cardFor(dayEvents[j]));
+      grid.appendChild(col);
+    }
+  }
+
+  // ---------- MONTH view ----------
+  function renderMonthView(events, anchorDate) {
+    var y = anchorDate.getFullYear();
+    var m = anchorDate.getMonth();
+    var firstOfMonth = new Date(y, m, 1);
+    var firstDow = (firstOfMonth.getDay() + 6) % 7; // 0 = Mon
+    var daysInMonth = new Date(y, m + 1, 0).getDate();
+    var daysInPrev  = new Date(y, m, 0).getDate();
+
+    $('#monthViewTitle').textContent = (MONTHS[m] + ' ' + y).toUpperCase();
+    var tISO = todayISO();
+    var monthCount = events.filter(function (e) {
+      return e && e.date && e.date.slice(0, 4) === String(y) &&
+             parseInt(e.date.slice(5, 7), 10) === m + 1;
+    }).length;
+    $('#monthViewTag').textContent = monthCount + ' EVENTS THIS MONTH';
+
+    var grid = $('#monthGrid');
+    grid.innerHTML = '';
+
+    var totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+    var prevMonthTail = firstDow;
+    var nextCursor = 1;
+
+    for (var i = 0; i < totalCells; i++) {
+      var cellDate, isOut = false, dayNum;
+      if (i < prevMonthTail) {
+        dayNum = daysInPrev - prevMonthTail + 1 + i;
+        cellDate = new Date(y, m - 1, dayNum);
+        isOut = true;
+      } else if (i >= firstDow + daysInMonth) {
+        dayNum = nextCursor++;
+        cellDate = new Date(y, m + 1, dayNum);
+        isOut = true;
+      } else {
+        dayNum = i - prevMonthTail + 1;
+        cellDate = new Date(y, m, dayNum);
+      }
+
+      var cellISO = isoDate(cellDate);
+      var cell = el('div', {
+        class: 'cal-month-cell' +
+               (isOut ? ' is-out' : '') +
+               (cellISO === tISO ? ' cal-today' : ''),
+        dataset: { date: cellISO },
+      });
+      cell.appendChild(el('div', {
+        class: 'cal-month-num',
+        text: String(dayNum),
+      }));
+
+      var cellEvents = events
+        .filter(function (e) { return e && e.date === cellISO; })
+        .sort(function (a, b) {
+          return (a.start || '99:99') < (b.start || '99:99') ? -1
+               : (a.start || '99:99') > (b.start || '99:99') ?  1 : 0;
+        });
+
+      var max = 3;
+      var shown = cellEvents.slice(0, max);
+      for (var k = 0; k < shown.length; k++) {
+        var ev = shown[k];
+        var chip = el('div', {
+          class: 'cal-event ' + kindToClass(ev.kind),
+          title: escapeText((ev.allDay || ev.start == null ? 'All day' : ev.start) + ' \u00b7 ' + ev.title),
+          text: escapeText((ev.allDay || ev.start == null ? '' : ev.start + ' ') + ev.title),
+        });
+        cell.appendChild(chip);
+      }
+      if (cellEvents.length > max) {
+        cell.appendChild(el('div', {
+          class: 'cal-month-more',
+          text: '+ ' + (cellEvents.length - max) + ' more',
+        }));
+      }
+
+      grid.appendChild(cell);
+    }
+  }
+
+  // ---------- Tab switching ----------
+  function bindTabs() {
+    var tabs  = document.querySelectorAll('.cal-tab');
+    var views = {
+      day:   $('#viewDay'),
+      week:  $('#viewWeek'),
+      month: $('#viewMonth'),
+    };
+    tabs.forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        var name = tab.dataset.tab;
+        state.view = name;
+        tabs.forEach(function (t) {
+          var active = (t === tab);
+          t.classList.toggle('is-active', active);
+          t.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        Object.keys(views).forEach(function (k) {
+          var v = views[k];
+          var on = (k === name);
+          v.classList.toggle('is-visible', on);
+          if (on) v.removeAttribute('hidden'); else v.setAttribute('hidden', '');
+          v.setAttribute('aria-hidden', on ? 'false' : 'true');
+        });
+      });
+    });
+  }
+
+  // ---------- Header clock + subtitle + status ----------
+  function tickClock() {
+    var d = new Date();
+    var hh = pad(d.getHours());
+    var mm = pad(d.getMinutes());
+    var ss = pad(d.getSeconds());
+    var elc = $('#calClock');
+    if (elc) elc.textContent = hh + ':' + mm + ':' + ss;
+  }
+  function paintHeader() {
+    var sub = $('#calSub');
+    if (sub) sub.textContent = formatLongDate(NOW).toUpperCase();
+    tickClock();
+    setInterval(tickClock, 1000);
+  }
+
+  // ---------- Week + month nav ----------
+  function bindNav() {
+    var prev = $('#calPrev'), today = $('#calToday'), next = $('#calNext');
+    if (prev) prev.addEventListener('click', function () {
+      state.weekAnchor = addDays(state.weekAnchor, -7);
+      renderWeekView(state.events, state.weekAnchor);
+    });
+    if (today) today.addEventListener('click', function () {
+      state.weekAnchor = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate());
+      renderWeekView(state.events, state.weekAnchor);
+    });
+    if (next) next.addEventListener('click', function () {
+      state.weekAnchor = addDays(state.weekAnchor, 7);
+      renderWeekView(state.events, state.weekAnchor);
+    });
+
+    var mp = $('#calMonthPrev'), mt = $('#calMonthToday'), mn = $('#calMonthNext');
+    if (mp) mp.addEventListener('click', function () {
+      state.monthAnchor = addMonths(state.monthAnchor, -1);
+      renderMonthView(state.events, state.monthAnchor);
+    });
+    if (mt) mt.addEventListener('click', function () {
+      state.monthAnchor = new Date(NOW.getFullYear(), NOW.getMonth(), 1);
+      renderMonthView(state.events, state.monthAnchor);
+    });
+    if (mn) mn.addEventListener('click', function () {
+      state.monthAnchor = addMonths(state.monthAnchor, 1);
+      renderMonthView(state.events, state.monthAnchor);
+    });
+  }
+
+  // ---------- Load aggregated events ----------
+  async function loadAggregated() {
+    try {
+      var r = await fetchJSON('/api/calendar/aggregated');
+      if (!r.ok) return { events: [], error: (r.data && r.data.error) || 'Could not load calendar.' };
+      // Aggregator returns a flat array (legacy /api/calendar/events returns {events:[]}).
+      var arr = Array.isArray(r.data) ? r.data
+              : (Array.isArray(r.data && r.data.events) ? r.data.events : []);
+      return { events: arr, error: null };
+    } catch (e) {
+      return { events: [], error: 'Could not reach the dashboard server. Make sure it is running.' };
+    }
+  }
+
+  // ---------- Day-detail modal (opens when any day is clicked) ----------
+  function daySection(title, count, rows, emptyText) {
+    return el('section', { class: 'cal-day-sec' }, [
+      el('div', { class: 'cal-day-sec-head' }, [
+        el('span', { text: title }),
+        el('span', { class: 'cal-day-sec-count', text: String(count) }),
+      ]),
+      rows.length ? rows : [el('div', { class: 'cal-day-empty', text: emptyText })],
+    ]);
+  }
+  function dayRow(time, title, sub) {
+    return el('div', { class: 'cal-day-row' }, [
+      el('div', { class: 'cal-day-time', text: time }),
+      el('div', { class: 'cal-day-main' }, [
+        el('div', { class: 'cal-day-name', text: title }),
+        sub ? el('div', { class: 'cal-day-note', text: sub }) : null,
+      ]),
+    ]);
+  }
+  function fillAgenda(body, iso) {
+    body.innerHTML = '';
+    body.appendChild(el('div', { class: 'cal-day-empty', text: 'Loading\u2026' }));
+    return fetchJSON('/api/agenda?date=' + iso).then(function (r) {
+      if (!r.ok || !r.data) throw new Error('Could not load this day.');
+      var a = r.data;
+      body.innerHTML = '';
+      body.appendChild(daySection('CLASSES', a.classes.length, a.classes.map(function (c) {
+        return dayRow(
+          fmtTime12(c.start) + ' \u2013 ' + fmtTime12(c.end),
+          c.label,
+          [c.course, c.location].filter(Boolean).join(' \u00b7 ')
+        );
+      }), 'No classes.'));
+      body.appendChild(daySection('EVENTS', a.events.length, a.events.map(function (e) {
+        var allDay = e.durationMin >= 1440;
+        var bits = [];
+        if (e.location) bits.push('@ ' + e.location);
+        if (e.notes) bits.push(e.notes.length > 140 ? e.notes.slice(0, 140) + '\u2026' : e.notes);
+        return dayRow(
+          allDay ? 'ALL DAY' : fmtTime12(e.start),
+          e.title,
+          bits.join(' \u00b7 ')
+        );
+      }), (a.errors && a.errors.calendar) || 'Nothing on your calendar.'));
+      body.appendChild(daySection('DUE ON CANVAS', a.due.length, a.due.map(function (x) {
+        var done = x.status === 'submitted' || x.status === 'graded';
+        return dayRow(
+          fmtTime12(x.time),
+          x.title,
+          x.course + (x.points ? ' \u00b7 ' + x.points + ' pts' : '') + (done ? ' \u00b7 done' : '')
+        );
+      }), (a.errors && a.errors.canvas) || 'Nothing due.'));
+    }).catch(function (e) {
+      body.innerHTML = '';
+      body.appendChild(el('div', { class: 'cal-day-empty', text: e.message || 'Could not load this day.' }));
+    });
+  }
+  function openDay(iso) {
+    var backdrop = $('#calDayBackdrop');
+    if (!backdrop) return;
+    var d = new Date(iso + 'T00:00:00');
+    $('#calDayTitle').textContent = formatLongDate(d).toUpperCase();
+    $('#calDaySub').textContent = (iso === todayISO()) ? 'TODAY' : '';
+    backdrop.hidden = false;
+    fillAgenda($('#calDayBody'), iso);
+  }
+  function bindDayDetail() {
+    var backdrop = $('#calDayBackdrop');
+    if (!backdrop) return;
+    var close = function () { backdrop.hidden = true; };
+    var closeBtn = $('#calDayClose');
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !backdrop.hidden) close();
+    });
+    var addBtn = $('#calDayAdd');
+    if (addBtn) addBtn.addEventListener('click', function () {
+      var date = $('#calDayTitle').dataset.date || todayISO();
+      // date is encoded in the modal title's iso mapping; fall back to today.
+      close();
+      if (window.__openNewEvent) window.__openNewEvent(date);
+    });
+    // Delegated click for any [data-date] element (week cols + month cells).
+    document.addEventListener('click', function (e) {
+      var t = e.target.closest('[data-date]');
+      if (!t || !t.dataset.date) return;
+      // Don't open when clicking an event card; open on cell/column only.
+      if (e.target.closest('.cal-event')) return;
+      openDay(t.dataset.date);
+    });
+  }
+
+  // ---------- New Event modal ----------
+  function bindNewEventForm() {
+    var backdrop  = $('#calModalBackdrop');
+    var openBtn   = $('#calNewEventBtn');
+    var closeBtn  = $('#calModalClose');
+    var cancelBtn = $('#calFormCancel');
+    var form      = $('#calNewEventForm');
+    var errorEl   = $('#calFormError');
+    var submitBtn = $('#calFormSubmit');
+    if (!backdrop || !openBtn || !form) return;
+
+    function openModal(dateISO) {
+      errorEl.textContent = '';
+      form.reset();
+      $('#calFormDate').value = (typeof dateISO === 'string' && dateISO) ? dateISO : todayISO();
+      backdrop.hidden = false;
+      $('#calFormTitle').focus();
+    }
+    function closeModal() { backdrop.hidden = true; }
+
+    window.__openNewEvent = openModal;
+    openBtn.addEventListener('click', function () { openModal(todayISO()); });
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) closeModal();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !backdrop.hidden) closeModal();
+    });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      errorEl.textContent = '';
+
+      var title    = $('#calFormTitle').value.trim();
+      var date     = $('#calFormDate').value;
+      var start    = $('#calFormStart').value;
+      var end      = $('#calFormEnd').value;
+      var location = $('#calFormLocation').value.trim();
+      var notes    = $('#calFormNotes').value.trim();
+
+      if (!title || !date || !start || !end) {
+        errorEl.textContent = 'Title, date, start, and end are required.';
         return;
       }
-      // /api/calendar/aggregated returns a flat array; legacy /api/calendar/events
-      // returns { events: [...] }. Accept either shape.
-      var events = Array.isArray(data)
-        ? data
-        : (Array.isArray(data && data.events) ? data.events : []);
-      var items = events.filter(function (e) { return e && e.kind && e.kind !== 'holiday'; });
-      var holidays = events.filter(function (e) { return e && e.kind === 'holiday'; });
-      state.items = items;
-      state.holidays = holidays;
-      if (events.length) {
-        setStatus('ok', 'CONNECTED');
-        renderSub(events.length + ' EVENTS \u00B7 ' + items.length + ' SCHEDULED');
-      } else {
-        setStatus('', 'NO DATA');
-        renderSub('No events returned by the server.');
-      }
-      renderGrid();
-    }).catch(function () {
-      if (rb) rb.disabled = false;
-      setStatus('partial', 'OFFLINE');
-      state.items = [];
-      state.holidays = [];
-      renderSub('Could not reach the dashboard server.');
-      renderGrid();
-    });
-  }
-
-  /* ---------- DOM helpers ---------- */
-  function el(tag, cls, text) {
-    var n = document.createElement(tag);
-    if (cls) n.className = cls;
-    if (text != null) n.textContent = text;
-    return n;
-  }
-  function setStatus(stateName, text) {
-    var s = $('calStatus');
-    if (!s) return;
-    s.textContent = text;
-    if (stateName) s.setAttribute('data-state', stateName);
-    else s.removeAttribute('data-state');
-  }
-  function renderSub(text) {
-    var s = $('calSub');
-    if (s) s.textContent = text;
-  }
-
-  /* ---------- Filter & render ---------- */
-  function filterFor(tab) {
-    var all = state.items.concat([]); // shallow copy
-    var out;
-    switch (tab) {
-      case 'classes':
-        out = all.filter(function (e) {
-          return e.kind === 'class' || e.kind === 'schedule-meeting';
-        });
-        break;
-      case 'meetings':
-        out = all.filter(function (e) {
-          return e.kind === 'meeting' || e.kind === 'personal';
-        });
-        break;
-      case 'assignments':
-        out = all.filter(function (e) { return e.kind === 'assignment'; });
-        break;
-      case 'study':
-        return []; // empty by design
-      case 'overview':
-      default:
-        out = all;
-        break;
-    }
-    return out;
-  }
-
-  function inRange(item, ws, we) {
-    // ws/we are local Date objects for Mon 00:00 and Sun 23:59 of the displayed week
-    if (!item || !item.date) return false;
-    var ymd = item.date.slice(0, 10);
-    if (ymd.length !== 10) return false;
-    var y = parseInt(ymd.slice(0, 4), 10);
-    var m = parseInt(ymd.slice(5, 7), 10) - 1;
-    var d = parseInt(ymd.slice(8, 10), 10);
-    if (isNaN(y) || isNaN(m) || isNaN(d)) return false;
-    var itemDay = new Date(y, m, d);
-    return itemDay.getTime() >= ws.getTime() && itemDay.getTime() <= we.getTime();
-  }
-
-  function colorFor(item) {
-    if (item && item.color) return item.color;
-    return KIND_COLORS[item && item.kind] || '#00E5FF';
-  }
-
-  function renderGrid() {
-    var host = $('calGridHost');
-    if (!host) return;
-    host.replaceChildren();
-
-    // Study placeholder
-    if (state.tab === 'study') {
-      var sWrap = el('div', 'cal-study');
-      sWrap.appendChild(el('span', 'cal-study-mark', 'STUDY OPTIMIZER'));
-      sWrap.appendChild(el('div', 'cal-study-title', 'Coming Soon'));
-      sWrap.appendChild(el('div', 'cal-study-sub',
-        'Study calendar will be added once the cron job syncs your assignments and class schedule.'
-      ));
-      host.appendChild(sWrap);
-      updateRangeLabel();
-      return;
-    }
-
-    // Empty data state — check whether Google is connected so the message
-    // can either include the connect button (when not) or just explain the
-    // quiet week (when connected).
-    if (!state.items.length && !state.holidays.length) {
-      var empty = el('div', 'cal-empty cal-empty-warn');
-      var heading = el('div', 'cal-empty-title', 'Nothing scheduled this week.');
-      empty.appendChild(heading);
-      var oauthHost = el('div', 'cal-empty-oauth');
-      empty.appendChild(oauthHost);
-      host.appendChild(empty);
-      // Probe OAuth so we can offer the connect link when relevant.
-      fetchJSON('/oauth/status').then(function (s) {
-        if (s && s.connected) {
-          oauthHost.appendChild(el('div', 'cal-empty-sub',
-            'No Google Calendar events and no upcoming Canvas assignments ' +
-            'in this range. Toggle tabs above to check Classes, Meetings, ' +
-            'or Assignments — or pick a different week with the arrows.'));
-        } else {
-          oauthHost.appendChild(el('div', 'cal-empty-sub',
-            'Google Calendar is not connected. Connect it below to pull ' +
-            'your schedule, meetings, and assignment reminders here.'));
-          var link = el('a', 'cal-empty-cta', 'Connect Google Calendar');
-          link.href = '/oauth/start';
-          link.target = '_self';
-          link.rel = 'noopener';
-          oauthHost.appendChild(link);
-        }
-        updateRangeLabel();
-      }).catch(function () {
-        oauthHost.appendChild(el('div', 'cal-empty-sub',
-          'Could not reach the dashboard server. Refresh the page or ' +
-          'check that server.js is running.'));
-        updateRangeLabel();
-      });
-      updateRangeLabel();
-      return;
-    }
-
-    // Compute displayed week from anchor
-    var anchor = state.anchor || new Date();
-    var ws = startOfWeekMon(anchor);
-    var we = addDays(ws, 6);
-    var now = new Date();
-
-    // Items in range, filtered by current tab
-    var filtered = filterFor(state.tab).filter(function (e) { return inRange(e, ws, we); });
-
-    // Determine hour bounds: default 8-22, expand for items that need it.
-    var minH = 8, maxH = 22;
-    filtered.forEach(function (e) {
-      if (!e || e.allDay) return;
-      if (typeof e.start !== 'string') return;
-      var p = e.start.split(':');
-      if (p.length < 2) return;
-      var h = parseInt(p[0], 10);
-      if (isNaN(h)) return;
-      var endMin = h * 60 + parseInt(p[1], 10) + (typeof e.durationMin === 'number' ? e.durationMin : 60);
-      var endH = Math.ceil(endMin / 60);
-      if (h < minH) minH = h;
-      if (endH > maxH) maxH = Math.min(endH, 24);
-    });
-    if (maxH <= minH) maxH = minH + 1;
-    state.minH = minH;
-    state.maxH = maxH;
-    var hourCount = maxH - minH;
-    var hourPx = 60;
-
-    var week = el('div', 'cal-week');
-    week.style.setProperty('--cal-hour-px', hourPx + 'px');
-
-    // Time column (header spacer + time labels)
-    var times = el('div', 'cal-times');
-    times.appendChild(el('div', 'cal-times-spacer'));
-    for (var h = minH; h < maxH; h++) {
-      times.appendChild(el('span', 'cal-time-slot', time12(h + ':00')));
-    }
-    week.appendChild(times);
-
-    // Per-day columns
-    var todayIso = isoDay(now);
-    for (var d = 0; d < 7; d++) {
-      var dayDate = addDays(ws, d);
-      var dayIso = isoDay(dayDate);
-      var day = el('div', 'cal-day' + (dayIso === todayIso ? ' is-today' : ''));
-
-      // Day header (MON + 6)
-      var head = el('div', 'cal-day-head');
-      head.appendChild(el('span', null, DAY_SHORT[d]));
-      head.appendChild(el('span', 'cal-day-num', String(dayDate.getDate())));
-      day.appendChild(head);
-
-      // All-day strip
-      var allDay = el('div', 'cal-all-day');
-      var dayItems = filtered.filter(function (e) { return e.date === dayIso && (e.allDay || e.kind === 'assignment'); });
-      dayItems.forEach(function (e) {
-        var chip = el('span', 'cal-all-day-item cal-kind-' + (e.kind || 'meeting'));
-        chip.textContent = e.title || '(untitled)';
-        chip.title = e.title || '';
-        allDay.appendChild(chip);
-      });
-      day.appendChild(allDay);
-
-      // Time-positioned body
-      var body = el('div', 'cal-day-body');
-      body.style.height = (hourCount * hourPx) + 'px';
-
-      // Holiday band (always visible when applicable)
-      var dayHols = state.holidays.filter(function (h) { return h.date === dayIso; });
-      dayHols.forEach(function (h) {
-        var band = el('div', 'cal-holiday');
-        band.title = h.title || 'Holiday';
-        body.appendChild(band);
-        if (h.title) {
-          var lbl = el('div', 'cal-holiday-label');
-          lbl.textContent = h.title;
-          body.appendChild(lbl);
-        }
-      });
-
-      // Timed events (skip all-day & assignment placeholders, which are in the strip)
-      var timed = filtered.filter(function (e) {
-        return e.date === dayIso && !e.allDay && e.kind !== 'assignment' && typeof e.start === 'string';
-      });
-      timed.forEach(function (e) {
-        var p = String(e.start).split(':');
-        if (p.length < 2) return;
-        var sh = parseInt(p[0], 10);
-        var sm = parseInt(p[1], 10);
-        if (isNaN(sh) || isNaN(sm)) return;
-        var dur = typeof e.durationMin === 'number' && e.durationMin > 0 ? e.durationMin : 60;
-        var startMin = sh * 60 + sm;
-        var endMin = Math.min(startMin + dur, maxH * 60);
-        if (endMin <= minH * 60) return;
-        if (startMin < minH * 60) startMin = minH * 60;
-        var top = (startMin - minH * 60) / 60 * hourPx;
-        var height = Math.max(18, (endMin - startMin) / 60 * hourPx - 2);
-        var block = el('div', 'cal-block');
-        block.style.top = top + 'px';
-        block.style.height = height + 'px';
-        block.style.setProperty('--cal-block-c', colorFor(e));
-        var titleText = e.title || '(untitled)';
-        block.title = titleText +
-          (e.location ? ' \u00B7 ' + e.location : '') +
-          ' (' + time12(e.start) + (e.durationMin ? '\u2013' + time12(addMinutesHHMM(e.start, e.durationMin)) : '') + ')';
-        var b = el('b', null, titleText);
-        block.appendChild(b);
-        if (height > 30) {
-          var t1 = el('span', 'cal-block-time', time12(e.start));
-          block.appendChild(t1);
-        }
-        if (height > 56 && e.location) {
-          var t2 = el('span', 'cal-block-loc', e.location);
-          block.appendChild(t2);
-        }
-        body.appendChild(block);
-      });
-
-      // "Now" line — only on today's column, only when current minute is in range
-      if (dayIso === todayIso) {
-        var nowMin = now.getHours() * 60 + now.getMinutes();
-        if (nowMin >= minH * 60 && nowMin <= maxH * 60) {
-          var line = el('div', 'cal-now');
-          line.style.top = ((nowMin - minH * 60) / 60 * hourPx) + 'px';
-          body.appendChild(line);
-        }
+      if (end <= start) {
+        errorEl.textContent = 'End time must be after start time.';
+        return;
       }
 
-      day.appendChild(body);
-      week.appendChild(day);
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'CREATING\u2026';
+
+      fetch('/api/calendar/events/new', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title, date: date, start: start, end: end,
+          location: location || undefined, notes: notes || undefined,
+        }),
+      })
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (result) {
+          if (!result.ok || !result.data.ok) {
+            throw new Error((result.data && result.data.error) || 'Failed to create event');
+          }
+          closeModal();
+          return boot();
+        })
+        .catch(function (err) {
+          errorEl.textContent = err.message;
+        })
+        .then(function () {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'CREATE EVENT';
+        });
+    });
+  }
+
+  // ---------- Boot ----------
+  async function boot() {
+    paintHeader();
+    var loaded = await loadAggregated();
+    state.events = loaded.events;
+    state.error = loaded.error;
+
+    var statusEl = $('#calSourceStatus');
+    if (statusEl) statusEl.textContent = loaded.error ? 'OFFLINE' : 'AGGREGATED';
+    var noticeEl = $('#calNotice');
+    if (noticeEl) {
+      noticeEl.textContent = loaded.error || '';
+      noticeEl.hidden = !loaded.error;
     }
-    host.appendChild(week);
 
-    updateRangeLabel(ws, we);
-  }
+    // Read-only export for other modules (chat, rescheduler, study planner).
+    window.__JARVIS_CALENDAR__ = {
+      events: state.events,
+      today:  todayISO(),
+      now:    NOW.toISOString(),
+      source: loaded.error ? 'unavailable' : 'aggregated',
+    };
 
-  function addMinutesHHMM(hhmm, add) {
-    var p = String(hhmm).split(':');
-    if (p.length < 2) return hhmm;
-    var total = parseInt(p[0], 10) * 60 + parseInt(p[1], 10) + (add || 0);
-    var h = Math.floor(total / 60);
-    var m = total % 60;
-    return h + ':' + (m < 10 ? '0' + m : m);
-  }
-
-  function updateRangeLabel(ws, we) {
-    var lbl = $('calRange');
-    if (!lbl) return;
-    if (!ws) {
-      var a = state.anchor || new Date();
-      ws = startOfWeekMon(a);
-      we = addDays(ws, 6);
-    }
-    lbl.textContent = monthRangeLabel(ws, we);
-  }
-
-  /* ---------- Month picker ---------- */
-  function buildMonthPicker() {
-    var sel = $('calMonth');
-    if (!sel) return;
-    sel.replaceChildren();
-    var now = new Date();
-    for (var i = 0; i < 24; i++) {
-      var d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      var opt = document.createElement('option');
-      opt.value = d.getFullYear() + '-' + (d.getMonth() + 1);
-      opt.textContent = MONTH_SHORT[d.getMonth()] + ' ' + d.getFullYear();
-      sel.appendChild(opt);
-    }
-    // Select the current month
-    sel.value = now.getFullYear() + '-' + (now.getMonth() + 1);
-  }
-
-  /* ---------- Tabs ---------- */
-  function setTab(key) {
-    state.tab = key;
-    var tabs = document.querySelectorAll('.cal-tab');
-    tabs.forEach(function (t) {
-      var on = t.getAttribute('data-tab') === key;
-      t.classList.toggle('is-active', on);
-      t.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
-    renderGrid();
-  }
-
-  /* ---------- Wiring ---------- */
-  function wire() {
-    document.querySelectorAll('.cal-tab').forEach(function (t) {
-      t.addEventListener('click', function () {
-        var key = t.getAttribute('data-tab');
-        if (key) setTab(key);
-      });
-    });
-
-    var prev = $('calPrev');
-    if (prev) prev.addEventListener('click', function () {
-      state.anchor = addDays(state.anchor || new Date(), -7);
-      renderGrid();
-    });
-    var next = $('calNext');
-    if (next) next.addEventListener('click', function () {
-      state.anchor = addDays(state.anchor || new Date(), 7);
-      renderGrid();
-    });
-    var today = $('calToday');
-    if (today) today.addEventListener('click', function () {
-      state.anchor = new Date();
-      renderGrid();
-    });
-    var refresh = $('calRefresh');
-    if (refresh) refresh.addEventListener('click', function () { loadAggregated(); });
-
-    var monthSel = $('calMonth');
-    if (monthSel) monthSel.addEventListener('change', function () {
-      var v = monthSel.value || '';
-      var parts = v.split('-');
-      if (parts.length !== 2) return;
-      var y = parseInt(parts[0], 10);
-      var m = parseInt(parts[1], 10) - 1;
-      if (isNaN(y) || isNaN(m)) return;
-      // Jump to the first week of the selected month (containing day 1)
-      state.anchor = new Date(y, m, 1);
-      renderGrid();
-    });
-  }
-
-  /* ---------- Init ---------- */
-  function init() {
-    state.anchor = new Date();
-    buildMonthPicker();
-    wire();
-    loadAggregated();
-    // Refresh the "now" line every minute in case the page is left open across a day boundary.
-    setInterval(function () {
-      if (state.tab !== 'study') renderGrid();
-    }, 60 * 1000);
+    renderDayView(state.events, NOW);
+    renderWeekView(state.events, state.weekAnchor);
+    renderMonthView(state.events, state.monthAnchor);
+    bindTabs();
+    bindNav();
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', function () {
+      bindNewEventForm();
+      bindDayDetail();
+      boot();
+    });
   } else {
-    init();
+    bindNewEventForm();
+    bindDayDetail();
+    boot();
   }
 })();

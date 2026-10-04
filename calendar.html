@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080c16" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <title>JARVIS · Calendar</title>
+  <title>JARVIS · Calendar · Life OS</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -14,52 +14,145 @@
     rel="stylesheet"
   />
   <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="home.css" />
-  <link rel="stylesheet" href="extras.css" />
   <link rel="stylesheet" href="calendar.css" />
 </head>
 <body class="page-shell">
 
-  <header class="cal-topbar" role="banner">
-    <a class="cal-back" href="index.html" title="Back to dashboard">&larr; DASHBOARD</a>
+  <!-- ============ HEADER ============ -->
+  <header class="cal-header panel" role="banner">
+    <a class="cal-back" href="index.html" aria-label="Back to dashboard">
+      <span class="cal-back-arrow">&larr;</span>
+      <span class="cal-back-label">DASHBOARD</span>
+    </a>
     <div class="cal-title-block">
       <h1 class="cal-title">CALENDAR</h1>
-      <div class="cal-sub" id="calSub">Loading aggregated events&hellip;</div>
+      <div class="cal-subtitle" id="calSub">&middot;</div>
     </div>
-    <div class="cal-topbar-right">
-      <span class="cal-status" id="calStatus">checking&hellip;</span>
-      <button class="cal-refresh" id="calRefresh" type="button" title="Refresh from server">REFRESH</button>
+    <div class="cal-header-right">
+      <button class="cal-new-event-btn" id="calNewEventBtn" type="button">+ NEW EVENT</button>
+      <span class="cal-clock-label" id="calSourceStatus">&hellip;</span>
+      <span class="cal-clock" id="calClock">--:--:--</span>
+      <span class="cal-clock-label">LOCAL</span>
     </div>
   </header>
 
-  <nav class="cal-tabs" role="tablist" aria-label="Calendar tabs">
-    <button class="cal-tab is-active" role="tab" aria-selected="true" data-tab="overview" type="button">OVERVIEW</button>
-    <button class="cal-tab" role="tab" aria-selected="false" data-tab="classes" type="button">CLASSES</button>
-    <button class="cal-tab" role="tab" aria-selected="false" data-tab="meetings" type="button">MEETINGS</button>
-    <button class="cal-tab" role="tab" aria-selected="false" data-tab="assignments" type="button">ASSIGNMENTS</button>
-    <button class="cal-tab" role="tab" aria-selected="false" data-tab="study" type="button">STUDY</button>
+  <div class="cal-notice" id="calNotice" role="alert" hidden></div>
+
+  <!-- ============ NEW EVENT MODAL ============ -->
+  <div class="cal-modal-backdrop" id="calModalBackdrop" hidden>
+    <div class="panel cal-modal" role="dialog" aria-labelledby="calModalTitle" aria-modal="true">
+      <div class="panel-header">
+        <h2 class="panel-title" id="calModalTitle">NEW EVENT</h2>
+        <button class="cal-modal-close" id="calModalClose" type="button" aria-label="Close">&times;</button>
+      </div>
+      <form id="calNewEventForm" class="cal-form" novalidate>
+        <label class="cal-form-field">
+          <span>Title</span>
+          <input type="text" id="calFormTitle" required maxlength="140" placeholder="e.g. Study group" />
+        </label>
+        <div class="cal-form-row">
+          <label class="cal-form-field">
+            <span>Date</span>
+            <input type="date" id="calFormDate" required />
+          </label>
+          <label class="cal-form-field">
+            <span>Start</span>
+            <input type="time" id="calFormStart" required />
+          </label>
+          <label class="cal-form-field">
+            <span>End</span>
+            <input type="time" id="calFormEnd" required />
+          </label>
+        </div>
+        <label class="cal-form-field">
+          <span>Location (optional)</span>
+          <input type="text" id="calFormLocation" maxlength="140" />
+        </label>
+        <label class="cal-form-field">
+          <span>Notes (optional)</span>
+          <textarea id="calFormNotes" rows="2" maxlength="500"></textarea>
+        </label>
+        <div class="cal-form-error" id="calFormError" role="alert"></div>
+        <div class="cal-form-actions">
+          <button type="button" class="cal-btn-ghost" id="calFormCancel">CANCEL</button>
+          <button type="submit" class="cal-btn-primary" id="calFormSubmit">CREATE EVENT</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ DAY DETAIL MODAL ============ -->
+  <div class="cal-modal-backdrop" id="calDayBackdrop" hidden>
+    <div class="panel cal-modal cal-day-modal" role="dialog" aria-labelledby="calDayTitle" aria-modal="true">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title" id="calDayTitle">&middot;</h2>
+          <div class="cal-day-sub" id="calDaySub"></div>
+        </div>
+        <button class="cal-modal-close" id="calDayClose" type="button" aria-label="Close">&times;</button>
+      </div>
+      <div class="cal-day-body" id="calDayBody"></div>
+      <div class="cal-form-actions">
+        <button type="button" class="cal-btn-primary" id="calDayAdd">+ ADD EVENT THIS DAY</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TABS ============ -->
+  <nav class="cal-tabs" role="tablist" aria-label="Calendar view">
+    <button class="cal-tab is-active" role="tab" aria-selected="true" data-tab="day"   id="tabDay"   type="button">DAY</button>
+    <button class="cal-tab"            role="tab" aria-selected="false" data-tab="week"  id="tabWeek"  type="button">WEEK</button>
+    <button class="cal-tab"            role="tab" aria-selected="false" data-tab="month" id="tabMonth" type="button">MONTH</button>
   </nav>
 
-  <main class="cal-page" role="main">
+  <!-- ============ VIEWS ============ -->
 
-    <section class="cal-toolbar panel" aria-label="Week navigation">
-      <div class="cal-week-nav">
-        <button class="cal-nav-btn" id="calPrev" type="button" aria-label="Previous week">&lsaquo;</button>
-        <button class="cal-today-btn" id="calToday" type="button">TODAY</button>
-        <button class="cal-nav-btn" id="calNext" type="button" aria-label="Next week">&rsaquo;</button>
+  <!-- DAY -->
+  <section class="cal-view cal-day-view is-visible" id="viewDay" role="tabpanel" aria-labelledby="tabDay">
+    <div class="panel cal-day-panel">
+      <div class="panel-header">
+        <h2 class="panel-title" id="dayViewTitle">&middot;</h2>
+        <span class="panel-tag" id="dayViewCount">&middot;</span>
       </div>
-      <div class="cal-range" id="calRange">&hellip;</div>
-      <label class="cal-month-pick">
-        <span class="cal-month-label">MONTH</span>
-        <select id="calMonth" class="cal-month-select"></select>
-      </label>
-    </section>
+      <ol class="cal-day-timeline" id="dayTimeline"></ol>
+    </div>
+  </section>
 
-    <section class="cal-grid panel" id="calGridHost" aria-label="Week view">
-      <div class="cal-empty" id="calEmpty">Loading&hellip;</div>
-    </section>
+  <!-- WEEK -->
+  <section class="cal-view cal-week-view" id="viewWeek" role="tabpanel" aria-labelledby="tabWeek" hidden>
+    <div class="panel cal-week-panel">
+      <div class="panel-header">
+        <h2 class="panel-title" id="weekViewTitle">&middot;</h2>
+        <div class="cal-week-controls">
+          <button class="cal-nav-btn" id="calPrev" type="button" aria-label="Previous week">&lsaquo;</button>
+          <button class="cal-today-btn" id="calToday" type="button">TODAY</button>
+          <button class="cal-nav-btn" id="calNext" type="button" aria-label="Next week">&rsaquo;</button>
+        </div>
+        <span class="panel-tag" id="weekViewRange">&middot;</span>
+      </div>
+      <div class="cal-week-grid" id="weekGrid"></div>
+    </div>
+  </section>
 
-  </main>
+  <!-- MONTH -->
+  <section class="cal-view cal-month-view" id="viewMonth" role="tabpanel" aria-labelledby="tabMonth" hidden>
+    <div class="panel cal-month-panel">
+      <div class="panel-header">
+        <h2 class="panel-title" id="monthViewTitle">&middot;</h2>
+        <div class="cal-month-controls">
+          <button class="cal-nav-btn" id="calMonthPrev" type="button" aria-label="Previous month">&lsaquo;</button>
+          <button class="cal-today-btn" id="calMonthToday" type="button">TODAY</button>
+          <button class="cal-nav-btn" id="calMonthNext" type="button" aria-label="Next month">&rsaquo;</button>
+        </div>
+        <span class="panel-tag" id="monthViewTag">&middot;</span>
+      </div>
+      <div class="cal-month-weekdays" aria-hidden="true">
+        <span>MON</span><span>TUE</span><span>WED</span><span>THU</span>
+        <span>FRI</span><span>SAT</span><span>SUN</span>
+      </div>
+      <div class="cal-month-grid" id="monthGrid"></div>
+    </div>
+  </section>
 
   <script src="calendar.js" defer></script>
 </body>

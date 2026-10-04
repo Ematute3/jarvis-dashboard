@@ -640,7 +640,23 @@ async function callMinimax(messages) {
       }),
     });
   } catch (err) {
-    return { ok: false, error: `LLM network error: ${err && err.message || err}` };
+    // Surface useful diagnostics for the user when the fetch itself fails
+    // (DNS, refused connection, TLS, timeout). The raw Node error message
+    // is often "fetch failed" which isn't actionable on its own.
+    const cause = (err && (err.cause || err)) || {};
+    const code = cause.code || (err && err.code) || '';
+    const msg  = (err && err.message) || String(err);
+    let hint = '';
+    if (code === 'ENOTFOUND' || /getaddrinfo/i.test(msg) || /ENOTFOUND/.test(code)) {
+      hint = ` — the MiniMax API host '${base}' does not resolve. Check minimaxBaseUrl in /settings.html.`;
+    } else if (code === 'ECONNREFUSED') {
+      hint = ` — connection refused at ${base}. Is the URL correct and the port open?`;
+    } else if (code === 'ETIMEDOUT' || code === 'ECONNRESET') {
+      hint = ` — the request timed out or was reset. Try again or check your network.`;
+    } else if (/certificate|TLS|SSL/i.test(msg)) {
+      hint = ` — TLS error. The base URL must use https:// for a real API.`;
+    }
+    return { ok: false, error: `LLM network error: ${msg}${hint}` };
   }
   if (!r.ok) {
     let detail = '';

@@ -181,8 +181,17 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages: payload }),
     }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
+      // Read the body either way — on non-2xx the server sends { ok:false, error:'...' }
+      // which is more useful than a bare 'HTTP 502'.
+      return r.text().then(function (text) {
+        var data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (e) { /* leave null */ }
+        if (!r.ok) {
+          var reason = (data && data.error) ? data.error : ('HTTP ' + r.status);
+          throw new Error(reason);
+        }
+        return data;
+      });
     });
   }
 

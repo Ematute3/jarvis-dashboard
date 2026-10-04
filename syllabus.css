@@ -1,0 +1,334 @@
+/* ============================================================
+   SYLLABUS LIBRARY · JARVIS-STYLE
+   Reuses .panel, .panel-title, .topbar from styles.css + extras.css.
+   Tokens: --c-cyan / --c-blue / --c-orange / --c-ink / --c-ink-dim /
+           --c-ink-faint / --c-line / --c-line-soft / --c-line-strong /
+           --r-2 / --f-display / --f-body / --f-mono / --glow-cyan
+   ============================================================ */
+
+/* ---- Page wrapper ---- */
+.page {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 14px;
+  padding: 18px;
+  max-width: 1240px;
+  margin: 0 auto;
+  width: 100%;
+  align-items: stretch;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .page { grid-template-columns: 1fr; }
+}
+
+/* ---- Top-bar meta ---- */
+.topbar-meta {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--c-ink-dim);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.topbar-meta::before {
+  content: "";
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--c-orange);
+  box-shadow: 0 0 6px var(--c-orange);
+}
+.topbar-meta[data-state="ok"]::before {
+  background: var(--c-cyan);
+  box-shadow: 0 0 6px var(--c-cyan);
+}
+.topbar-meta[data-state="partial"]::before {
+  background: var(--c-orange);
+  box-shadow: 0 0 6px var(--c-orange);
+}
+.topbar-meta[data-state="error"]::before {
+  background: var(--c-orange);
+  box-shadow: 0 0 6px var(--c-orange);
+}
+
+/* ---- Course list panel ---- */
+.course-list-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100vh - 120px);
+}
+.course-list-panel .panel-header { flex-shrink: 0; }
+
+.course-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.course-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--c-line-soft);
+  border-radius: var(--r-2);
+  background: rgba(10, 14, 23, 0.45);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.course-row::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 8px; bottom: 8px;
+  width: 2px;
+  background: transparent;
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+.course-row:hover {
+  border-color: var(--c-line-strong);
+  background: rgba(0, 229, 255, 0.04);
+}
+.course-row:focus-visible {
+  outline: none;
+  border-color: var(--c-line-strong);
+  box-shadow: 0 0 0 1px var(--c-line-strong);
+}
+.course-row.active {
+  border-color: var(--c-cyan);
+  background: rgba(0, 229, 255, 0.06);
+  box-shadow: inset 0 0 12px rgba(0, 229, 255, 0.08);
+}
+.course-row.active::before {
+  background: var(--c-cyan);
+  box-shadow: 0 0 10px var(--c-cyan);
+}
+
+.course-row .row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.course-row .row-code {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--c-cyan);
+}
+.course-row .row-credits {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--c-ink-faint);
+}
+.course-row .row-name {
+  font-family: var(--f-display);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--c-ink);
+  line-height: 1.3;
+}
+.course-row .row-instructor {
+  font-size: 11px;
+  color: var(--c-ink-dim);
+}
+
+/* ---- Syllabus viewer panel ---- */
+.syllabus-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100vh - 120px);
+}
+.syllabus-panel .panel-header { flex-shrink: 0; }
+
+.syllabus-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.syllabus-code {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  color: var(--c-cyan);
+}
+.syllabus-title {
+  font-family: var(--f-display);
+  font-size: 22px;
+  letter-spacing: 0.12em;
+  color: var(--c-ink);
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+  margin: 0;
+}
+.syllabus-instructor {
+  font-size: 12px;
+  color: var(--c-ink-dim);
+  letter-spacing: 0.05em;
+}
+
+.syllabus-meta {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.syllabus-meta .meta-chip {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  padding: 4px 8px;
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  color: var(--c-ink-dim);
+}
+
+.syllabus-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  padding-right: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- Sections inside viewer ---- */
+.syl-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px dashed var(--c-line);
+  border-radius: var(--r-2);
+  background: rgba(10, 14, 23, 0.35);
+}
+.syl-section h3 {
+  font-family: var(--f-display);
+  font-size: 11px;
+  letter-spacing: 0.35em;
+  color: var(--c-cyan);
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--c-line-soft);
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.syl-section p {
+  margin: 0;
+  color: var(--c-ink);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.syl-section .syl-empty,
+.syl-empty {
+  color: var(--c-ink-faint);
+  font-style: italic;
+  font-size: 12px;
+}
+
+/* ---- Grading bars ---- */
+.grade-list { display: flex; flex-direction: column; gap: 6px; }
+.grade-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  align-items: center;
+  font-size: 12px;
+}
+.grade-row .grade-label { color: var(--c-ink); }
+.grade-row .grade-pct {
+  font-family: var(--f-mono);
+  color: var(--c-cyan);
+  letter-spacing: 0.08em;
+}
+.grade-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  background: rgba(0, 229, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.grade-bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--c-blue), var(--c-cyan));
+  box-shadow: 0 0 6px rgba(0, 229, 255, 0.5);
+}
+
+/* ---- Office hours + exam dates ---- */
+.detail-list { display: flex; flex-direction: column; gap: 8px; }
+.detail-item {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--c-line-soft);
+  font-size: 12px;
+}
+.detail-item:last-child { border-bottom: none; }
+.detail-item .detail-key {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--c-ink-dim);
+  text-transform: uppercase;
+}
+.detail-item .detail-val { color: var(--c-ink); }
+
+.exam-item .detail-key { color: var(--c-orange); }
+.exam-item .detail-val { color: var(--c-orange); }
+
+.syl-src {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--c-ink-faint);
+  text-transform: uppercase;
+  margin-left: 8px;
+}
+.syl-watch h3 { color: var(--c-orange); }
+.syl-watch ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.syl-watch li {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--c-ink-dim);
+}
+
+/* ---- Empty state used by course list and viewer ---- */
+.course-empty {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--c-ink-dim);
+  padding: 28px 16px;
+  text-align: center;
+  border: 1px dashed var(--c-line);
+  border-radius: var(--r-2);
+  list-style: none;
+}
+
+/* ---- Responsive tweaks ---- */
+@media (max-width: 720px) {
+  .syllabus-title { font-size: 17px; letter-spacing: 0.08em; }
+  .syllabus-head { flex-direction: column; align-items: flex-start !important; }
+  .syllabus-meta { margin-top: 6px; }
+}

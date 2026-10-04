@@ -357,6 +357,345 @@ All renders consume the response shapes correctly; there are no schema
 mismatches and no missing fields between the legacy responses and the
 renderers in this checkout.
 
+---
+
+## Linked pages
+
+> A page-by-page check of every linked view reachable from the top-bar
+> chips in `index.html` (`index.html:44-57`) and from the in-widget "see
+> all" links (`index.html:87-89,260`). Same verification method as the
+> widget section - `curl` the page, then `curl` every API endpoint the
+> page references, then read the renderer.
+>
+> **Note:** since the widget section above was written, `/oauth/status`
+> now returns `{"connected":true,"scopes":["...calendar.events",
+> "...gmail.modify"]}`, so Gmail is live on the local server and
+> `email.html` is populated (this contradicts the "intentionally empty"
+> note in widget #8 - the page-level row below describes the current
+> state).
+
+| Page | Chip / source | Endpoint(s) | Status |
+| --- | --- | --- | --- |
+| `classes.html` | `SCHOOL` chip | `GET /api/courses/all` + `/api/canvas/courses/:id/assignments` + `/api/canvas/courses/:id/syllabus` + `/api/settings/status` | populated (9 courses with tabs + grade calculator) |
+| `plan.html` | `BY CLASS` chip | `GET /api/plan` | populated (9 courses, 164 items, with filter pills) |
+| `assignments.html` | `ASSIGNMENTS` chip | `GET /api/courses/all` + `/api/canvas/courses/:id/assignments` | populated (9 courses, 55 assignments) |
+| `calendar.html` | `CALENDAR` chip | `GET /api/calendar/events` | populated (318 events) |
+| `email.html` | `INBOX` chip | `GET /api/gmail/messages?limit=20` | populated (20 messages - Gmail connected) |
+| `portfolio.html` | `MONEY` chip | `GET /api/holdings` + `/api/prices` + `/api/portfolio/history` | populated (12 holdings, 9 quotes, 11-day history) |
+| `syllabus.html` | `LIBRARY` chip | `GET /api/courses/all` + `/api/canvas/courses/:id/syllabus` | populated (9 courses with full syllabus body in viewer) |
+| `statements.html` | `STATEMENTS` chip | `GET /api/statements` | **stub** - endpoint returns 404 |
+| `settings.html` | `SETTINGS` chip | `GET/PUT /api/config` | populated (6 credential sections live) |
+| `mobile.html` | `PHONE VIEW` chip | (same set as `index.html`) | populated (phone layout of the home grid) |
+| `index.html` | home dashboard | (see widget section above) | populated (see widget section) |
+
+`curl` summary (each returned HTTP 200 unless marked otherwise):
+
+```
+classes.html        -> 200  3064 bytes   /api/courses/all           -> 200 38405 b  (9 courses)
+                                          /api/canvas/courses/234111/assignments -> 200 (17 items)
+                                          /api/canvas/courses/234111/syllabus   -> 200 6475 b (full body)
+                                          /api/settings/status       -> 200 254 b   (all integrations "connected")
+plan.html           -> 200  1499 bytes   /api/plan                  -> 200 38803 b  (9 courses, 164 items)
+assignments.html    -> 200  7536 bytes   /api/courses/all           -> 200 38405 b  (9 courses)
+                                          /api/canvas/courses/234111/assignments -> 200 (17 items)
+calendar.html       -> 200  6779 bytes   /api/calendar/events       -> 200 127945 b (318 events)
+email.html          -> 200  5720 bytes   /api/gmail/messages?limit=20 -> 200 7644 b   (20 messages)
+portfolio.html      -> 200 12534 bytes   /api/holdings              -> 200 950 b    (12 holdings)
+                                          /api/prices               -> 200 1313 b   (9 quotes)
+                                          /api/portfolio/history    -> 200 (11 points)
+syllabus.html       -> 200  3132 bytes   /api/courses/all           -> 200 38405 b  (9 courses)
+                                          /api/canvas/courses/234111/syllabus   -> 200 6475 b (per-course body)
+statements.html     -> 200  7480 bytes   /api/statements            -> **404** (no handler)
+settings.html       -> 200 12084 bytes   /api/config                -> 200 636 b
+mobile.html         -> 200 16350 bytes   (reuses all index.html scripts)
+index.html          -> 200 15650 bytes   (see widget section)
+```
+
+### Page-by-page findings
+
+### 1. `classes.html` (SCHOOL chip) - populated
+
+**Endpoints:** `GET /api/courses/all` (9 courses), `/api/settings/status`
+(connection check), and `/api/canvas/courses/:id/assignments` +
+`/api/canvas/courses/:id/syllabus` per course (via `classes.js:24-65`).
+
+**Returns:** 9 courses with `{id, code, name, instructor, term,
+credits, color, currentScorePct, links, source, syllabus}`; 55
+assignments and 9 parsed syllabi on the `/api/canvas/*` paths (the
+same syllabus body is also fetched by `syllabus.html`). The
+`/api/settings/status` payload reports which integrations are
+connected (canvas token, canvas domain, google, stock API - all
+`"connected"` on this server).
+
+**What the page shows:** a tabbed two-pane layout with a header
+"CLASSES" + "CANVAS" status pill (`classes.html:42-57`), a view
+switch row (COURSES / GRADE CALCULATOR tabs, `classes.html:60-63`),
+a left tabs rail of courses (`#cls-tabs`, `classes.html:67-69`), and
+a right panel area (`#cls-main`) that holds one `<section
+class="cls-panel">` per course populated by `classes.js`. Each
+course panel renders the assignment list and the parsed syllabus
+(when, where, grading, key dates) inside the same card. The Grade
+Calculator tab is a `#cls-calc-view` placeholder
+(`classes.html:75-76`) populated by `classes.js`. Subtitle
+`#cls-subtitle` shows live counts, status `#cls-status` reports
+the connection state.
+
+**Fix if empty:** n/a.
+
+---
+
+### 2. `plan.html` (BY CLASS chip) - populated
+
+**Endpoint:** `GET /api/plan`
+
+**Returns:** `{today, courses:[{id, name, fullName, color, score,
+nextClass, meets, items:[...]}]}` with 9 courses and 164 dated items
+(BCH:23, BIO CLASS:51, BIO Dis:7, BIO LAB:26, Crime & Punishment:7,
+CHEM:20, CHEM LAB:24, WRIT 9:6, WRIT LAB:0) - same payload consumed by
+widget #6, but consumed client-side by the new `plan.js:279`.
+
+**What the page shows:** a minimal shell (`plan.html`) with a header
+"BY CLASS" / subtitle "What you need to do next in every course" /
+status pill "CANVAS + SYLLABI", a course-filter pills nav
+(`#pl-pills`, populated by `plan.js`), and a `#pl-grid` main area.
+`plan.js` builds one card per course (Canvas assignments + module
+pages + syllabus dates, per the file header at `plan.js:1`). The
+filter pills let the user narrow by course. `#pl-status` reports
+connection state. Page assets: `plan.css` + `plan.js`.
+
+**Fix if empty:** n/a.
+
+---
+
+### 3. `assignments.html` (ASSIGNMENTS chip) - populated
+
+**Endpoints:** `GET /api/courses/all` (9 courses) then
+`GET /api/canvas/courses/:id/assignments` per course - identical to
+widget #3.
+
+**Returns:** 55 assignments across 9 courses (BCH:17, BIOL 5A Lecture:29,
+BIOL 5A Dis:0, BIOL 5LA:5, HNPG 018:0, CHEM 001A:0, CHEM 01LA:4, WRIT
+009:0, WRIT 009L:0) with `{title, course, dueDate, status}` per item.
+
+**What the page shows:** a single panel "UPCOMING - CANVAS" with one
+row per assignment sorted soonest-first (`assignments.html:104-107,
+149-153`). Each row is `as-row` with title + short course code on the
+left and a "Mon DD - weekday/today/tomorrow/overdue" stamp on the right
+(orange/urgent if due within 48 h). Graded rows dim to 0.55 opacity via
+`[data-status="graded"]`. `#asCount` reports "N ITEMS".
+
+**Fix if empty:** n/a.
+
+---
+
+### 4. `calendar.html` (CALENDAR chip) - populated
+
+**Endpoint:** `GET /api/calendar/events`
+
+**Returns:** 318 events with `{id, title, date, start, durationMin,
+location, isClass}` - same payload as widget #7.
+
+**What the page shows:** a single panel "UPCOMING - GOOGLE CALENDAR"
+rendering one row per event (`calendar.html:111-114`). Each row is a
+2-column grid: day label + time range on the left, title (and location
+if present) on the right. The renderer does not drop `isClass` entries
+the way `academics.js:281` does - so class blocks from the schedule
+**also** appear here as duplicated rows. `#calCount` reports "N
+EVENTS"; `#calStatus` reflects connection state.
+
+**Fix if empty:** n/a.
+
+---
+
+### 5. `email.html` (INBOX chip) - populated
+
+**Endpoint:** `GET /api/gmail/messages?limit=20`
+
+**Returns:** 20 real Gmail messages with `{id, from, subject, unread,
+snippet}`. First three on this verification: from "Google
+<no-reply@accounts.google.com>" / subject "Security alert"; from
+"Instructure Canvas <notifications@instructure.com>" / subject "Access
+Token Created or Regenerated"; from "Jacob Kantor <jkant006@ucr.edu>"
+/ subject meeting invitation for Fri Oct 23 2026.
+
+**Why it works:** the local handler at `server.js:656-697` now finds a
+valid Google token, so Gmail is live on this server. The widget
+section above describes the prior "not connected" state; this row
+documents the current state. (`/oauth/status` confirms
+`connected: true`.)
+
+**What the page shows:** a single panel "RECENT - GMAIL" rendering one
+row per message (`email.html:103-106`). Each row is a 2-column grid:
+a status dot (cyan-glowing if unread, faint grey otherwise) on the
+left, sender + subject on the right. Unread rows get `.is-unread`
+which bumps the font weight and lights up the dot. `#emlCount`
+reports "N MESSAGES".
+
+**Fix if empty:** run `GET /oauth/start` in the browser; this page is
+populated today.
+
+---
+
+### 6. `portfolio.html` (MONEY chip) - populated
+
+**Endpoints:** `GET /api/holdings` (12 rows) + `GET /api/prices`
+(9 quotes) + `GET /api/portfolio/history` (11 daily points) - all three
+parallel-fetched in `Promise.all` (`portfolio.html:303-306`).
+
+**Returns:** holdings `[ticker, shares, cost, account]`; quotes
+`{ticker, price, change, chg_pct, high, low, open, prev_close}`;
+history `[{date, value}]` from 2026-09-23 through 2026-10-03 (ranging
+~5791 to ~5868 USD).
+
+**What the page shows:** three summary tiles (`portfolio.html:115-131`)
+- TOTAL VALUE (market value of every holding), DAY CHANGE (signed
+dollar + percent since open), ALL-TIME G/L (signed dollar + percent
+vs cost basis). A 1000x80 SVG sparkline fills with a cyan-gradient
+area under the line (`portfolio.html:138-148,267-294`). Below, a
+HOLDINGS table lists one row per position: ticker / shares /
+market value / percent change (cyan if up, orange if down). The page
+has its own renderer (`portfolio.html:162-336`); it does not import
+`portfolio-shared.js`. `#portStatus` reports "CONNECTED" / "NO DATA".
+
+**Fix if empty:** n/a.
+
+---
+
+### 7. `syllabus.html` (LIBRARY chip) - populated (full viewer)
+
+**Endpoints:** `GET /api/courses/all` (course list) +
+`GET /api/canvas/courses/:id/syllabus` (per-course syllabus body) +
+`/api/settings/status` (connection probe), via `syllabus.js:23-99`.
+
+**Returns:** 9 courses from `/api/courses/all` plus per-course
+`{courseId, paragraphs:[...]}` payloads (e.g. for course 234111 the
+body is 6475 bytes containing the full BCH 095 syllabus text - "BCH
+095 TOPICS IN BIOCHEMISTRY FOR CAREER PLANNING", meeting time
+"Wednesdays 4:00-4:50 PM", etc.).
+
+**What the page shows:** a two-column shell with a course list on
+the left (`#courseList`, role-based `sidebar-listbox`/`sidebar-list`,
+`syllabus.html:48-56`) and a syllabus viewer panel on the right
+(`#sylBody`, `syllabus.html:58-75`). Clicking a course populates the
+viewer header (`#sylCode`, `#sylTitle`, `#sylInstructor`,
+`#sylTerm`, `#sylCredits`) and renders the syllabus paragraphs
+inside `#sylBody`. The header chip `#sylStatus` reports
+"CONNECTED" / "NO DATA" / "OFFLINE"; `#courseCount` reports "N
+TOTAL". Below 900 px width the two columns collapse to one
+(`syllabus.html:33-35`). Page assets: `syllabus.css` +
+`syllabus.js`.
+
+**Fix if empty:** n/a.
+
+---
+
+### 8. `statements.html` (STATEMENTS chip) - stub
+
+**Endpoint:** `GET /api/statements` -> **HTTP 404**.
+
+**Why:** the page declares the fetch (`statements.html:201`) but no
+handler exists for `/api/statements` on this server. There is no
+statements router in `server.js`, no proxy allow-list match, and the
+wildcard middleware at `server.js:342` does not cover it either (it
+falls through to a 404). The page is wired up correctly - it just has
+no upstream.
+
+**What the page shows:** a single panel "RECENT - CSV INGEST" with
+three summary tiles (DEBIT / CREDIT / NET, hidden until rows are
+loaded) and a list area. With no data the list shows "No statements
+yet." and the summary stays hidden (`statements.html:111-127,
+154-161`). `#stmStatus` reads "OFFLINE" because the fetch throws on the
+404.
+
+**Fix if empty:** add a `/api/statements` route that reads a CSV from
+`data/statements.csv` (the page expects `{date, description, category,
+amount}` rows, see `statements.html:163-180`), or proxy the path
+through the legacy if it exists there. Today the page is a UI shell
+with no backend.
+
+---
+
+### 9. `settings.html` (SETTINGS chip) - populated
+
+**Endpoint:** `GET /api/config` (initial load) + `PUT /api/config`
+(saves). All traffic stays local - the wildcard middleware at
+  `server.js:342` is bypassed.
+
+**Returns (initial):** `{minimaxApiKey:"sk-c...B0ps",
+minimaxApiKeySet:true, minimaxBaseUrl, minimaxModel,
+googleClientId, googleClientIdSet, googleClientSecret, googleClientSecretSet,
+googleRedirectUri, canvasApiKeySet, canvasBaseUrl,
+jarvisApiBase:"http://jarviss-mac-mini.taile919c2.ts.net:8765",
+jarvisApiBaseSet, jarvisApiKeySet, toolMaxIterations,
+systemPrompt}` (636 bytes; preview truncated).
+
+**What the page shows:** six panels (`settings.html:31-303`):
+1. **MINIMAX** - paste API key (masked preview shows last 4 chars).
+2. **CANVAS** - paste access token + base URL.
+3. **LEGACY JARVIS** - paste base URL + optional bearer token.
+4. **GOOGLE** - paste OAuth client ID + secret (redirect URI displayed
+   readonly).
+5. **TOOL BEHAVIOR** - slider for `toolMaxIterations` (1-50).
+7. **SYSTEM PROMPT** - free-text editor for the JARVIS chat system
+   prompt.
+
+Each panel has its own `.status` pill (`unknown` / `ok` / `error`)
+updated after every save. Saves are optimistic (the panel
+immediately shows "saved" then re-reads `/api/config` to confirm).
+This page is the only linked view whose traffic does **not** touch the
+legacy proxy.
+
+**Fix if empty:** n/a.
+
+---
+
+### 10. `mobile.html` (PHONE VIEW chip) - populated
+
+**Endpoints:** same set as `index.html` - it loads `view.js`,
+`portfolio-shared.js`, `app.js`, `academics.js`, `extras.js`,
+`news.js`, `goals.js`, `plan-home.js`, plus `native-launcher.js` and
+`chatbot.js` (`mobile.html:370-410`). Every widget therefore inherits
+the population status from the widget table at the top of this doc.
+
+**What it shows:** a single-column 420 px-wide layout
+(`mobile.html:33-40`) with:
+- Stacked hero (greeting + clock + day-progress bar).
+- Three next-up tiles (NEXT CLASS / NEXT DUE / NEXT EVENT) that
+  deep-link back to `classes.html` / `assignments.html` /
+  `calendar.html`.
+- Today's classes list (`#scheduleStream`).
+- Assignment list (`.assign-list`).
+- INBOX preview (`#inboxList`).
+- Portfolio card (value, day change, sparkline, totals).
+- Goals card with inline add input (`#goalForm`).
+- QUICK LAUNCH grid of six native buttons (Calendar / Mail /
+  Reminders / Finder / VS Code / JARVIS repo in browser) that fire
+  through Tauri when the dashboard is running as a desktop shell.
+- A top-bar DESKTOP VIEW link that swaps back to `index.html`
+  via `JarvisView.switchTo('desktop')` (`mobile.html:201,399-406`).
+- The same chat panel as the desktop dashboard, plus an assignments
+  notification panel toggled by the bell.
+
+This is **not** a new data source - it is a re-layout of the home
+grid for narrow viewports. The Tauri native buttons require the
+desktop shell; in a plain browser they no-op gracefully
+(`native-launcher.js` checks for the runtime).
+
+**Fix if empty:** see the corresponding widget in the table above.
+
+---
+
+### 11. `index.html` (home dashboard) - populated
+
+Covered in full by the widget-by-widget section at the top of this
+doc. The home dashboard is also the page that owns the
+`<a class="chip">` links (`index.html:44-57`) which are what the rest
+of this section was reached through.
+
+**Fix if empty:** see the widget table above.
+
+---
+
 ### Render endpoints covered by the proxy
 
 These endpoints have no authoritative local handler - the wildcard

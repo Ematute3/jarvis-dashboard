@@ -1,182 +1,33 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#080c16" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
-    rel="stylesheet"
-  />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Inter:wght@300;400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="home.css" />
   <link rel="stylesheet" href="extras.css" />
-  <style>
-    .settings-bar { grid-template-columns: auto 1fr auto; }
-    .page {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 16px;
-      padding: 18px;
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-    .empty-state {
-      font-family: var(--f-mono);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      color: var(--c-ink-dim);
-      padding: 28px 16px;
-      text-align: center;
-      border: 1px dashed var(--c-line);
-      border-radius: var(--r-2);
-    }
-    .pl-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 14px;
-    }
-    .pl-card {
-      padding: 12px 14px;
-      border: 1px solid var(--c-line);
-      border-radius: var(--r-2);
-      background: var(--surface);
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .pl-card h3 {
-      margin: 0;
-      font-family: var(--f-display);
-      font-size: 11px;
-      letter-spacing: 0.2em;
-      color: var(--c-cyan);
-    }
-    .pl-card ul {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .pl-card li {
-      font-family: var(--f-body);
-      font-size: 12px;
-      color: var(--c-ink);
-      display: grid;
-      grid-template-columns: 8px 1fr;
-      gap: 8px;
-      align-items: center;
-    }
-    .pl-card li::before {
-      content: '';
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--c-cyan);
-      box-shadow: 0 0 6px var(--c-cyan);
-    }
-  </style>
-  <title>JARVIS · By Class</title>
+  <link rel="stylesheet" href="plan.css" />
+  <title>JARVIS · By Class · Life OS</title>
 </head>
-<body class="page-shell">
-
-  <header class="topbar settings-bar" role="banner">
-    <a class="topbar-back" href="index.html" title="Back to dashboard">← DASHBOARD</a>
-    <div class="topbar-title">BY CLASS</div>
-    <div class="topbar-meta" id="plStatus">checking…</div>
+<body>
+  <header class="pl-header panel">
+    <a class="pl-back" href="index.html" aria-label="Back to dashboard">&larr; DASHBOARD</a>
+    <div class="pl-title-block">
+      <h1 class="pl-title">BY CLASS</h1>
+      <div class="pl-subtitle" id="pl-subtitle">What you need to do next in every course</div>
+    </div>
+    <div class="pl-status"><span id="pl-status">&hellip;</span> <small>CANVAS + SYLLABI</small></div>
   </header>
 
-  <main class="page" role="main">
-    <section class="panel" aria-label="Plan by class">
-      <div class="panel-header">
-        <h2 class="panel-title">NEXT UP · BY CLASS</h2>
-        <span class="panel-tag" id="plCount">0 ITEMS</span>
-      </div>
-      <div class="pl-grid" id="plGrid">
-        <div class="empty-state">Loading plan…</div>
-      </div>
-    </section>
-  </main>
+  <nav class="pl-pills" id="pl-pills" aria-label="Course filter"></nav>
+  <main class="pl-grid" id="pl-grid"><div class="pl-empty">Loading from Canvas&hellip;</div></main>
 
-  <script>
-    (function () {
-      'use strict';
-      function el(id) { return document.getElementById(id); }
-      function fetchJSON(url) {
-        return fetch(url).then(function (r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        });
-      }
-      function escapeText(s) {
-        return typeof s === 'string' ? s : (s == null ? '' : String(s));
-      }
-      function render(data) {
-        var grid = el('plGrid');
-        grid.replaceChildren();
-        var classes = Array.isArray(data) ? data : (data.classes || data.plan || []);
-        if (!classes.length) {
-          var empty = document.createElement('div');
-          empty.className = 'empty-state';
-          empty.textContent = 'Nothing to plan from yet.';
-          grid.appendChild(empty);
-          el('plCount').textContent = '0 ITEMS';
-          return;
-        }
-        var total = 0;
-        classes.forEach(function (c) {
-          var card = document.createElement('div');
-          card.className = 'pl-card';
-          var h = document.createElement('h3');
-          h.textContent = escapeText(c.course || c.name || c.title || 'Course');
-          card.appendChild(h);
-          var ul = document.createElement('ul');
-          var items = c.items || c.tasks || c.next || [];
-          items.forEach(function (it) {
-            var li = document.createElement('li');
-            li.textContent = escapeText(typeof it === 'string' ? it : (it.title || it.name || ''));
-            ul.appendChild(li);
-          });
-          if (!items.length) {
-            var li = document.createElement('li');
-            li.textContent = 'No upcoming items';
-            ul.appendChild(li);
-          }
-          card.appendChild(ul);
-          grid.appendChild(card);
-          total += items.length;
-        });
-        el('plCount').textContent = total + ' ITEMS';
-      }
-      function setStatus(state, text) {
-        var s = el('plStatus');
-        s.textContent = text;
-        if (state) s.setAttribute('data-state', state);
-        else s.removeAttribute('data-state');
-      }
-      function load() {
-        setStatus('', 'loading…');
-        fetchJSON('/api/plan').then(function (data) {
-          render(data);
-          var hasData = Array.isArray(data) ? data.length : (data.classes || data.plan || []).length;
-          setStatus(hasData ? 'ok' : '', hasData ? 'CONNECTED' : 'NO DATA');
-        }).catch(function () {
-          render([]);
-          setStatus('partial', 'OFFLINE');
-        });
-      }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', load);
-      } else {
-        load();
-      }
-    })();
-  </script>
+  <script src="plan.js" defer></script>
 </body>
 </html>

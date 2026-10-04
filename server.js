@@ -661,160 +661,6 @@ app.post('/api/calendar/events/new', async (req, res) => {
 // item with a `kind` (class, schedule-meeting, meeting, personal,
 // assignment, holiday), and serves a flat array sorted by date+start.
 //
-// US federal holidays are observed dates per the U.S. Office of Personnel
-// Management (OPM) federal-holidays calendar
-// (https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/).
-// When a fixed-date holiday falls on a Saturday, the federal "in lieu of"
-// date is the preceding Friday; when it falls on a Sunday, it is the
-// following Monday. The table below is the hand-resolved observed dates
-// for 2024–2028, which covers current year ± 2 around 2026. Add more
-// years here if your term window extends further.
-
-const US_FEDERAL_HOLIDAYS = {
-  // 2024 — all fall on weekdays, no in-lieu-of shifts.
-  '2024-01-01': { name: "New Year's Day", kind: 'federal' },
-  '2024-01-15': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
-  '2024-02-19': { name: "Washington's Birthday", kind: 'federal' },
-  '2024-05-27': { name: 'Memorial Day', kind: 'federal' },
-  '2024-06-19': { name: 'Juneteenth National Independence Day', kind: 'federal' },
-  '2024-07-04': { name: 'Independence Day', kind: 'federal' },
-  '2024-09-02': { name: 'Labor Day', kind: 'federal' },
-  '2024-10-14': { name: 'Columbus Day', kind: 'federal' },
-  '2024-11-11': { name: 'Veterans Day', kind: 'federal' },
-  '2024-11-28': { name: 'Thanksgiving Day', kind: 'federal' },
-  '2024-12-25': { name: 'Christmas Day', kind: 'federal' },
-  // 2025 — all fall on weekdays, no in-lieu-of shifts.
-  '2025-01-01': { name: "New Year's Day", kind: 'federal' },
-  '2025-01-20': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
-  '2025-02-17': { name: "Washington's Birthday", kind: 'federal' },
-  '2025-05-26': { name: 'Memorial Day', kind: 'federal' },
-  '2025-06-19': { name: 'Juneteenth National Independence Day', kind: 'federal' },
-  '2025-07-04': { name: 'Independence Day', kind: 'federal' },
-  '2025-09-01': { name: 'Labor Day', kind: 'federal' },
-  '2025-10-13': { name: 'Columbus Day', kind: 'federal' },
-  '2025-11-11': { name: 'Veterans Day', kind: 'federal' },
-  '2025-11-27': { name: 'Thanksgiving Day', kind: 'federal' },
-  '2025-12-25': { name: 'Christmas Day', kind: 'federal' },
-  // 2026 — Independence Day (Sat Jul 4) is observed Fri Jul 3.
-  '2026-01-01': { name: "New Year's Day", kind: 'federal' },
-  '2026-01-19': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
-  '2026-02-16': { name: "Washington's Birthday", kind: 'federal' },
-  '2026-05-25': { name: 'Memorial Day', kind: 'federal' },
-  '2026-06-19': { name: 'Juneteenth National Independence Day', kind: 'federal' },
-  '2026-07-03': { name: 'Independence Day (observed)', kind: 'federal' },
-  '2026-09-07': { name: 'Labor Day', kind: 'federal' },
-  '2026-10-12': { name: 'Columbus Day', kind: 'federal' },
-  '2026-11-11': { name: 'Veterans Day', kind: 'federal' },
-  '2026-11-26': { name: 'Thanksgiving Day', kind: 'federal' },
-  '2026-12-25': { name: 'Christmas Day', kind: 'federal' },
-  // 2027 — Juneteenth (Sat) → Fri Jun 18; Independence Day (Sun) → Mon Jul 5;
-  // Christmas (Sat) → Fri Dec 24.
-  '2027-01-01': { name: "New Year's Day", kind: 'federal' },
-  '2027-01-18': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
-  '2027-02-15': { name: "Washington's Birthday", kind: 'federal' },
-  '2027-05-31': { name: 'Memorial Day', kind: 'federal' },
-  '2027-06-18': { name: 'Juneteenth National Independence Day (observed)', kind: 'federal' },
-  '2027-07-05': { name: 'Independence Day (observed)', kind: 'federal' },
-  '2027-09-06': { name: 'Labor Day', kind: 'federal' },
-  '2027-10-11': { name: 'Columbus Day', kind: 'federal' },
-  '2027-11-11': { name: 'Veterans Day', kind: 'federal' },
-  '2027-11-25': { name: 'Thanksgiving Day', kind: 'federal' },
-  '2027-12-24': { name: 'Christmas Day (observed)', kind: 'federal' },
-  // 2028 — Veterans Day (Sat) → Fri Nov 10.
-  '2028-01-17': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
-  '2028-02-21': { name: "Washington's Birthday", kind: 'federal' },
-  '2028-05-29': { name: 'Memorial Day', kind: 'federal' },
-  '2028-06-19': { name: 'Juneteenth National Independence Day', kind: 'federal' },
-  '2028-07-04': { name: 'Independence Day', kind: 'federal' },
-  '2028-09-04': { name: 'Labor Day', kind: 'federal' },
-  '2028-10-09': { name: 'Columbus Day', kind: 'federal' },
-  '2028-11-10': { name: 'Veterans Day (observed)', kind: 'federal' },
-  '2028-11-23': { name: 'Thanksgiving Day', kind: 'federal' },
-  '2028-12-25': { name: 'Christmas Day', kind: 'federal' },
-};
-
-// California state holidays — per California Government Code § 19853 and
-// § 6700. Includes the optional "Day after Thanksgiving" closure that the
-// Governor's office has authorized in most years. Observed-date shifts are
-// applied the same way as the federal table.
-const CA_STATE_HOLIDAYS = {
-  // 2024
-  '2024-01-01': { name: "New Year's Day", kind: 'california' },
-  '2024-01-15': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
-  '2024-02-19': { name: 'Presidents Day', kind: 'california' },
-  '2024-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
-  '2024-05-27': { name: 'Memorial Day', kind: 'california' },
-  '2024-06-19': { name: 'Juneteenth', kind: 'california' },
-  '2024-07-04': { name: 'Independence Day', kind: 'california' },
-  '2024-09-02': { name: 'Labor Day', kind: 'california' },
-  '2024-09-09': { name: 'California Admission Day', kind: 'california' },
-  '2024-10-14': { name: 'Columbus Day', kind: 'california' },
-  '2024-11-11': { name: 'Veterans Day', kind: 'california' },
-  '2024-11-28': { name: 'Thanksgiving Day', kind: 'california' },
-  '2024-11-29': { name: 'Day after Thanksgiving', kind: 'california' },
-  '2024-12-25': { name: 'Christmas Day', kind: 'california' },
-  // 2025
-  '2025-01-01': { name: "New Year's Day", kind: 'california' },
-  '2025-01-20': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
-  '2025-02-17': { name: 'Presidents Day', kind: 'california' },
-  '2025-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
-  '2025-05-26': { name: 'Memorial Day', kind: 'california' },
-  '2025-06-19': { name: 'Juneteenth', kind: 'california' },
-  '2025-07-04': { name: 'Independence Day', kind: 'california' },
-  '2025-09-01': { name: 'Labor Day', kind: 'california' },
-  '2025-09-09': { name: 'California Admission Day', kind: 'california' },
-  '2025-10-13': { name: 'Columbus Day', kind: 'california' },
-  '2025-11-11': { name: 'Veterans Day', kind: 'california' },
-  '2025-11-27': { name: 'Thanksgiving Day', kind: 'california' },
-  '2025-11-28': { name: 'Day after Thanksgiving', kind: 'california' },
-  '2025-12-25': { name: 'Christmas Day', kind: 'california' },
-  // 2026 — Independence Day Sat Jul 4 → observed Fri Jul 3.
-  '2026-01-01': { name: "New Year's Day", kind: 'california' },
-  '2026-01-19': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
-  '2026-02-16': { name: 'Presidents Day', kind: 'california' },
-  '2026-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
-  '2026-05-25': { name: 'Memorial Day', kind: 'california' },
-  '2026-06-19': { name: 'Juneteenth', kind: 'california' },
-  '2026-07-03': { name: 'Independence Day (observed)', kind: 'california' },
-  '2026-09-07': { name: 'Labor Day', kind: 'california' },
-  '2026-09-09': { name: 'California Admission Day', kind: 'california' },
-  '2026-10-12': { name: 'Columbus Day', kind: 'california' },
-  '2026-11-11': { name: 'Veterans Day', kind: 'california' },
-  '2026-11-26': { name: 'Thanksgiving Day', kind: 'california' },
-  '2026-11-27': { name: 'Day after Thanksgiving', kind: 'california' },
-  '2026-12-25': { name: 'Christmas Day', kind: 'california' },
-  // 2027 — Juneteenth Sat → Fri Jun 18; Independence Day Sun → Mon Jul 5; Christmas Sat → Fri Dec 24.
-  '2027-01-01': { name: "New Year's Day", kind: 'california' },
-  '2027-01-18': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
-  '2027-02-15': { name: 'Presidents Day', kind: 'california' },
-  '2027-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
-  '2027-05-31': { name: 'Memorial Day', kind: 'california' },
-  '2027-06-18': { name: 'Juneteenth (observed)', kind: 'california' },
-  '2027-07-05': { name: 'Independence Day (observed)', kind: 'california' },
-  '2027-09-06': { name: 'Labor Day', kind: 'california' },
-  '2027-09-09': { name: 'California Admission Day', kind: 'california' },
-  '2027-10-11': { name: 'Columbus Day', kind: 'california' },
-  '2027-11-11': { name: 'Veterans Day', kind: 'california' },
-  '2027-11-25': { name: 'Thanksgiving Day', kind: 'california' },
-  '2027-11-26': { name: 'Day after Thanksgiving', kind: 'california' },
-  '2027-12-24': { name: 'Christmas Day (observed)', kind: 'california' },
-  // 2028
-  '2028-01-01': { name: "New Year's Day", kind: 'california' },
-  '2028-01-17': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
-  '2028-02-21': { name: 'Presidents Day', kind: 'california' },
-  '2028-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
-  '2028-05-29': { name: 'Memorial Day', kind: 'california' },
-  '2028-06-19': { name: 'Juneteenth', kind: 'california' },
-  '2028-07-04': { name: 'Independence Day', kind: 'california' },
-  '2028-09-04': { name: 'Labor Day', kind: 'california' },
-  '2028-09-09': { name: 'California Admission Day', kind: 'california' },
-  '2028-10-09': { name: 'Columbus Day', kind: 'california' },
-  '2028-11-10': { name: 'Veterans Day (observed)', kind: 'california' },
-  '2028-11-23': { name: 'Thanksgiving Day', kind: 'california' },
-  '2028-11-24': { name: 'Day after Thanksgiving', kind: 'california' },
-  '2028-12-25': { name: 'Christmas Day', kind: 'california' },
-};
-
 // UCR academic calendar — instructional recesses, holidays, and finals
 // windows. The dates below are pulled from the published UCR Academic
 // Calendar for 2024-2027 and reduced to days when classes are not in
@@ -862,37 +708,119 @@ const UCR_ACADEMIC_HOLIDAYS = {
   // Winter 2027 — instruction Jan 4 – Mar 12; finals Mar 15-19.
   '2027-01-18': { name: 'Martin Luther King, Jr. Day (no classes)', kind: 'ucr' },
   '2027-02-15': { name: 'Presidents Day (no classes)', kind: 'ucr' },
+
+  // --- Term-boundary dates (first/last day of instruction, drop
+  // deadline, finals begin, commencement, spring break). These extend
+  // the no-class closures above with the academic-calendar markers
+  // the dashboard uses to dim non-instructional days on the grid.
+  //
+  // Term boundaries follow the user's stated pattern:
+  //   Fall   — late Sep to mid-Dec   (4th Thu Sep … 2nd Fri Dec)
+  //   Winter — early Jan to mid-Mar  (1st Tue Jan … 3rd Fri Mar)
+  //   Spring — late Mar to mid-Jun   (4th Wed Mar … 2nd Fri Jun)
+  //
+  // 2024 — Fall quarter.
+  '2024-09-26': { name: 'Fall Quarter: First day of instruction',   kind: 'ucr' },
+  '2024-10-25': { name: 'Fall Quarter: Drop deadline',              kind: 'ucr' },
+  '2024-12-06': { name: 'Fall Quarter: Last day of instruction',    kind: 'ucr' },
+  '2024-12-09': { name: 'Fall Quarter: Finals begin',               kind: 'ucr' },
+  // 2025 — Winter quarter.
+  '2025-01-06': { name: 'Winter Quarter: First day of instruction', kind: 'ucr' },
+  '2025-02-07': { name: 'Winter Quarter: Drop deadline',            kind: 'ucr' },
+  '2025-03-14': { name: 'Winter Quarter: Last day of instruction',  kind: 'ucr' },
+  '2025-03-17': { name: 'Winter Quarter: Finals begin',             kind: 'ucr' },
+  '2025-03-22': { name: 'Spring Break (begins)',                     kind: 'ucr' },
+  '2025-03-25': { name: 'Spring Break (ends)',                       kind: 'ucr' },
+  // 2025 — Spring quarter.
+  '2025-03-26': { name: 'Spring Quarter: First day of instruction', kind: 'ucr' },
+  '2025-04-25': { name: 'Spring Quarter: Drop deadline',            kind: 'ucr' },
+  '2025-06-12': { name: 'Spring Quarter: Last day of instruction',  kind: 'ucr' },
+  '2025-06-13': { name: 'Spring Quarter: Finals begin',             kind: 'ucr' },
+  '2025-06-21': { name: 'Commencement',                             kind: 'ucr' },
+  // 2025 — Fall quarter.
+  '2025-09-22': { name: 'Fall Quarter: First day of instruction',   kind: 'ucr' },
+  '2025-10-24': { name: 'Fall Quarter: Drop deadline',              kind: 'ucr' },
+  '2025-12-12': { name: 'Fall Quarter: Last day of instruction',    kind: 'ucr' },
+  '2025-12-15': { name: 'Fall Quarter: Finals begin',               kind: 'ucr' },
+  // 2026 — Winter quarter.
+  '2026-01-05': { name: 'Winter Quarter: First day of instruction', kind: 'ucr' },
+  '2026-02-06': { name: 'Winter Quarter: Drop deadline',            kind: 'ucr' },
+  '2026-03-13': { name: 'Winter Quarter: Last day of instruction',  kind: 'ucr' },
+  '2026-03-16': { name: 'Winter Quarter: Finals begin',             kind: 'ucr' },
+  '2026-03-21': { name: 'Spring Break (begins)',                     kind: 'ucr' },
+  '2026-03-24': { name: 'Spring Break (ends)',                       kind: 'ucr' },
+  // 2026 — Spring quarter.
+  '2026-03-25': { name: 'Spring Quarter: First day of instruction', kind: 'ucr' },
+  '2026-04-24': { name: 'Spring Quarter: Drop deadline',            kind: 'ucr' },
+  '2026-06-11': { name: 'Spring Quarter: Last day of instruction',  kind: 'ucr' },
+  '2026-06-12': { name: 'Spring Quarter: Finals begin',             kind: 'ucr' },
+  '2026-06-20': { name: 'Commencement',                             kind: 'ucr' },
+  // 2026 — Fall quarter.
+  '2026-09-21': { name: 'Fall Quarter: First day of instruction',   kind: 'ucr' },
+  '2026-10-23': { name: 'Fall Quarter: Drop deadline',              kind: 'ucr' },
+  '2026-12-11': { name: 'Fall Quarter: Last day of instruction',    kind: 'ucr' },
+  '2026-12-14': { name: 'Fall Quarter: Finals begin',               kind: 'ucr' },
+  // 2027 — Winter quarter.
+  '2027-01-04': { name: 'Winter Quarter: First day of instruction', kind: 'ucr' },
+  '2027-02-05': { name: 'Winter Quarter: Drop deadline',            kind: 'ucr' },
+  '2027-03-12': { name: 'Winter Quarter: Last day of instruction',  kind: 'ucr' },
+  '2027-03-15': { name: 'Winter Quarter: Finals begin',             kind: 'ucr' },
+  '2027-03-20': { name: 'Spring Break (begins)',                     kind: 'ucr' },
+  '2027-03-23': { name: 'Spring Break (ends)',                       kind: 'ucr' },
+  // 2027 — Spring quarter.
+  '2027-03-24': { name: 'Spring Quarter: First day of instruction', kind: 'ucr' },
+  '2027-04-23': { name: 'Spring Quarter: Drop deadline',            kind: 'ucr' },
+  '2027-06-10': { name: 'Spring Quarter: Last day of instruction',  kind: 'ucr' },
+  '2027-06-11': { name: 'Spring Quarter: Finals begin',             kind: 'ucr' },
+  '2027-06-19': { name: 'Commencement',                             kind: 'ucr' },
+  // 2027 — Fall quarter.
+  '2027-09-27': { name: 'Fall Quarter: First day of instruction',   kind: 'ucr' },
+  '2027-10-29': { name: 'Fall Quarter: Drop deadline',              kind: 'ucr' },
+  '2027-12-10': { name: 'Fall Quarter: Last day of instruction',    kind: 'ucr' },
+  '2027-12-13': { name: 'Fall Quarter: Finals begin',               kind: 'ucr' },
+  // 2028 — Winter quarter.
+  '2028-01-03': { name: 'Winter Quarter: First day of instruction', kind: 'ucr' },
+  '2028-02-04': { name: 'Winter Quarter: Drop deadline',            kind: 'ucr' },
+  '2028-03-10': { name: 'Winter Quarter: Last day of instruction',  kind: 'ucr' },
+  '2028-03-13': { name: 'Winter Quarter: Finals begin',             kind: 'ucr' },
+  '2028-03-18': { name: 'Spring Break (begins)',                     kind: 'ucr' },
+  '2028-03-21': { name: 'Spring Break (ends)',                       kind: 'ucr' },
+  // 2028 — Spring quarter.
+  '2028-03-22': { name: 'Spring Quarter: First day of instruction', kind: 'ucr' },
+  '2028-04-21': { name: 'Spring Quarter: Drop deadline',            kind: 'ucr' },
+  '2028-06-09': { name: 'Spring Quarter: Last day of instruction',  kind: 'ucr' },
+  '2028-06-12': { name: 'Spring Quarter: Finals begin',             kind: 'ucr' },
+  '2028-06-17': { name: 'Commencement',                             kind: 'ucr' },
+  // 2028 — Fall quarter.
+  '2028-09-25': { name: 'Fall Quarter: First day of instruction',   kind: 'ucr' },
+  '2028-10-27': { name: 'Fall Quarter: Drop deadline',              kind: 'ucr' },
+  '2028-12-08': { name: 'Fall Quarter: Last day of instruction',    kind: 'ucr' },
+  '2028-12-11': { name: 'Fall Quarter: Finals begin',               kind: 'ucr' },
 };
 
 // --- Holiday lookup helpers ---------------------------------------------
 //
-// The three static tables (US_FEDERAL_HOLIDAYS, CA_STATE_HOLIDAYS,
-// UCR_ACADEMIC_HOLIDAYS) above are date-keyed `{ name, kind }` hashes
-// covering 2024–2028. They are combined into HOLIDAYS_BY_KIND so the
-// /api/holidays endpoint can serve all three sources through one
-// `?kind=` filter. The kind values match the `kind` field embedded in
-// each table's rows: 'federal', 'california', and 'ucr'. `ucr-academic`
-// is accepted as an alias for `ucr` so a URL can stay short.
+// The single static table (UCR_ACADEMIC_HOLIDAYS) above is a date-keyed
+// `{ name, kind }` hash covering 2024–2027 — instructional recesses,
+// holidays, and finals windows from the published UCR Academic Calendar.
+// Sources cited inline above. `ucr-academic` is accepted as an alias for
+// `ucr` so a URL can stay short.
 
 const HOLIDAYS_BY_KIND = {
-  'federal':    US_FEDERAL_HOLIDAYS,
-  'california': CA_STATE_HOLIDAYS,
-  'ucr':        UCR_ACADEMIC_HOLIDAYS,
+  'ucr': UCR_ACADEMIC_HOLIDAYS,
 };
 
 // Accepted values for the /api/holidays `?kind=` query param. `ucr-academic`
 // is accepted as an alias for `ucr` to match the kind string used in the
 // response payload examples.
 const HOLIDAY_KIND_ALIASES = {
-  'federal':       'federal',
-  'california':    'california',
-  'ucr':           'ucr',
-  'ucr-academic':  'ucr',
+  'ucr':          'ucr',
+  'ucr-academic': 'ucr',
 };
 
 // All kinds in display order (also drives the `kinds` summary field
 // returned by /api/holidays).
-const HOLIDAY_KINDS = ['federal', 'california', 'ucr'];
+const HOLIDAY_KINDS = ['ucr'];
 
 // Per-kind default color, mapped to the dashboard's existing CSS tokens
 // (--c-cyan / --c-blue / --c-orange / --c-orange-soft in styles.css).
@@ -1241,9 +1169,9 @@ function invalidateCalendarCache() {
 // GET /api/holidays
 //   ?year=YYYY        — single year (e.g. "2026") or comma-separated list
 //                       (e.g. "2025,2026,2027"). Default: current year.
-//   ?kind=federal|california|ucr-academic|ucr
-//                    — limit results to one source. `ucr` is an accepted
-//                       alias for `ucr-academic`.
+//   ?kind=ucr-academic|ucr
+//                    — limit results to the UCR academic table. `ucr` is
+//                       an accepted alias for `ucr-academic`.
 //
 // Response shape:
 //   { holidays: [{date, name, kind}, ...], kinds: [...], year: N }

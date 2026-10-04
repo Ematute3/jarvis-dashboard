@@ -41,6 +41,16 @@
       .replace(/'/g, '&#39;');
   }
 
+  function splitThinking(text) {
+    if (typeof text !== 'string') return { reply: '', thinking: '' };
+    var re = /<think>([\s\S]*?)<\/think>/g;
+    var thinking = [];
+    var match;
+    while ((match = re.exec(text)) !== null) thinking.push(match[1]);
+    var reply = text.replace(re, '').trim();
+    return { reply: reply, thinking: thinking.join('\n\n').trim() };
+  }
+
   function loadHistory() {
     try {
       var raw = sessionStorage.getItem(STORAGE_KEY);
@@ -49,6 +59,7 @@
       if (!Array.isArray(parsed)) return [];
       return parsed.filter(function (m) {
         return m && typeof m.content === 'string' &&
+          (m.thinking === undefined || typeof m.thinking === 'string') &&
           (m.role === 'user' || m.role === 'assistant' || m.role === 'tool');
       });
     } catch (e) {
@@ -83,6 +94,18 @@
     bubble.setAttribute('data-role', role);
     // textContent never injects HTML — safe for any user input.
     bubble.textContent = String(msg.content == null ? '' : msg.content);
+    if (msg.role === 'assistant' && msg.thinking) {
+      var details = document.createElement('details');
+      details.className = 'chat-thinking';
+      var summary = document.createElement('summary');
+      summary.textContent = 'thinking';
+      details.appendChild(summary);
+      var pre = document.createElement('pre');
+      pre.className = 'chat-thinking-body';
+      pre.textContent = msg.thinking; // textContent — never innerHTML
+      details.appendChild(pre);
+      bubble.appendChild(details);
+    }
     return bubble;
   }
 
@@ -197,29 +220,41 @@
 
   function extractReply(data) {
     var content = '';
+    var thinking = '';
     var toolCalls = [];
-    if (!data || typeof data !== 'object') return { content: '', toolCalls: [] };
+    if (!data || typeof data !== 'object') return { content: '', thinking: '', toolCalls: [] };
     if (typeof data.reply === 'string') {
-      content = data.reply;
+      var split0 = splitThinking(data.reply);
+      content = split0.reply;
+      thinking = split0.thinking;
     } else if (typeof data.content === 'string') {
-      content = data.content;
+      var split1 = splitThinking(data.content);
+      content = split1.reply;
+      thinking = split1.thinking;
     } else if (data.message && typeof data.message.content === 'string') {
-      content = data.message.content;
+      var split2 = splitThinking(data.message.content);
+      content = split2.reply;
+      thinking = split2.thinking;
     } else if (Array.isArray(data.choices) && data.choices[0] && data.choices[0].message) {
-      content = String(data.choices[0].message.content || '');
+      var split3 = splitThinking(String(data.choices[0].message.content || ''));
+      content = split3.reply;
+      thinking = split3.thinking;
     } else if (Array.isArray(data.content)) {
-      content = data.content
+      var joined = data.content
         .filter(function (b) { return b && (b.type === 'text' || b.type == null); })
         .map(function (b) { return b.text || b.content || ''; })
         .filter(function (s) { return !!s; })
         .join('\n');
+      var split4 = splitThinking(joined);
+      content = split4.reply;
+      thinking = split4.thinking;
     }
     if (Array.isArray(data.tool_calls)) {
       toolCalls = data.tool_calls;
     } else if (data.message && Array.isArray(data.message.tool_calls)) {
       toolCalls = data.message.tool_calls;
     }
-    return { content: content, toolCalls: toolCalls };
+    return { content: content, thinking: thinking, toolCalls: toolCalls };
   }
 
   function formatToolCall(tc) {
@@ -278,7 +313,7 @@
         }
         var assistantContent = reply.content || (reply.toolCalls.length ? '' : '(no response)');
         if (assistantContent) {
-          var amsg = { role: 'assistant', content: assistantContent };
+          var amsg = { role: 'assistant', content: assistantContent, thinking: reply.thinking || '' };
           messages.push(amsg);
           appendBubble(amsg);
         }

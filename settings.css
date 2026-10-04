@@ -77,7 +77,12 @@
 }
 @media (min-width: 980px) {
   .page { grid-template-columns: 1fr 1fr; }
-  .page .panel[data-section="google"] { grid-column: 1 / -1; }
+  /* Multi-field credential + textarea panels span the full width on desktop
+     so the two-up grid stays balanced (single MiniMax/Tool cell + wide panels). */
+  .page .panel[data-section="google"]         { grid-column: 1 / -1; }
+  .page .panel[data-section="canvas"]         { grid-column: 1 / -1; }
+  .page .panel[data-section="jarvis-legacy"]  { grid-column: 1 / -1; }
+  .page .panel[data-section="system-prompt"]  { grid-column: 1 / -1; }
 }
 
 /* -------- Panel copy blurb (between header and form) -------- */
@@ -136,6 +141,46 @@
   box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
 }
 .cred-form input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* -------- Textarea (system prompt) --------
+   Same surface treatment as the text/password inputs; slightly taller
+   minimum height so a 10-row textarea doesn't look cramped. */
+.cred-textarea {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cred-textarea > span {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--c-ink-dim);
+  text-transform: uppercase;
+}
+.cred-form textarea {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--c-ink);
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-2);
+  padding: 10px 12px;
+  width: 100%;
+  min-height: 200px;
+  resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.cred-form textarea::placeholder {
+  color: var(--c-ink-faint);
+  font-family: var(--f-mono);
+}
+.cred-form textarea:focus {
+  outline: none;
+  border-color: var(--c-cyan);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+}
+.cred-form textarea:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .field--readonly {
   border: 1px dashed var(--c-line-soft);

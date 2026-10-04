@@ -104,6 +104,22 @@
     setStatus('minimaxStatus', c.minimaxApiKeySet);
     $('minimaxSaved').textContent = 'Currently saved: ' + (c.minimaxApiKey || '—');
 
+    // Canvas — both fields have their own pill
+    setStatus('canvasStatus', c.canvasApiKeySet && c.canvasBaseUrlSet);
+    setStatus('canvasApiKeyStatus', c.canvasApiKeySet);
+    $('canvasApiKeySaved').textContent = 'Currently saved: ' + (c.canvasApiKey || '—');
+
+    setStatus('canvasBaseUrlStatus', c.canvasBaseUrlSet);
+    $('canvasBaseUrlSaved').textContent = 'Currently saved: ' + (c.canvasBaseUrl || '—');
+
+    // Legacy JARVIS — base URL is required, bearer token is optional
+    setStatus('jarvisLegacyStatus', c.jarvisApiBaseSet);
+    setStatus('jarvisApiBaseStatus', c.jarvisApiBaseSet);
+    $('jarvisApiBaseSaved').textContent = 'Currently saved: ' + (c.jarvisApiBase || '—');
+
+    setStatus('jarvisApiKeyStatus', c.jarvisApiKeySet);
+    $('jarvisApiKeySaved').textContent = 'Currently saved: ' + (c.jarvisApiKey || '—');
+
     // Google — both fields have their own pill
     setStatus('googleStatus', c.googleClientIdSet && c.googleClientSecretSet);
     setStatus('googleClientIdStatus', c.googleClientIdSet);
@@ -122,14 +138,30 @@
       $('toolMaxIterations').value = iter;
     }
 
-    // Topbar summary — "N/3 configured"
-    var setBits = (c.minimaxApiKeySet ? 1 : 0)
-              + (c.googleClientIdSet ? 1 : 0)
-              + (c.googleClientSecretSet ? 1 : 0);
+    // System prompt — pill always reads "ok" because chat works either way;
+    // the text just flips between "custom" and "built-in default".
+    var hasCustomPrompt = !!c.systemPrompt;
+    var sysEl = $('systemPromptStatus');
+    if (sysEl) {
+      sysEl.dataset.state = 'ok';
+      sysEl.textContent = hasCustomPrompt ? 'Using your custom prompt' : 'Using built-in default';
+    }
+    $('systemPromptSaved').textContent = hasCustomPrompt
+      ? 'Currently saved: custom prompt (' + c.systemPrompt.length + ' chars)'
+      : 'Currently saved: (using built-in default)';
+
+    // Topbar summary — "N/5 configured"
+    //   3 = minimum for full chat functionality (MiniMax + Google OAuth pair)
+    //   5 = fully configured (adds Canvas + legacy JARVIS bridge)
+    var setBits = (c.minimaxApiKeySet       ? 1 : 0)
+              + (c.googleClientIdSet        ? 1 : 0)
+              + (c.googleClientSecretSet    ? 1 : 0)
+              + (c.canvasApiKeySet          ? 1 : 0)
+              + (c.jarvisApiBaseSet         ? 1 : 0);
     var meta = $('statusMeta');
     if (meta) {
-      meta.textContent = setBits + '/3 configured';
-      meta.dataset.state = setBits === 3 ? 'ok' : (setBits === 0 ? 'missing' : 'partial');
+      meta.textContent = setBits + '/5 configured';
+      meta.dataset.state = setBits === 5 ? 'ok' : (setBits === 0 ? 'missing' : 'partial');
     }
   }
 
@@ -225,18 +257,109 @@
       .then(unlock);
   }
 
+  function saveCanvas(e) {
+    e.preventDefault();
+    var keyEl = $('canvasApiKey');
+    var urlEl = $('canvasBaseUrl');
+    var keyVal = (keyEl.value || '').trim();
+    var urlVal = (urlEl.value || '').trim();
+
+    // Partial patch — only include fields the user typed into.
+    var patch = {};
+    if (keyVal) patch.canvasApiKey   = keyVal;
+    if (urlVal) patch.canvasBaseUrl  = urlVal;
+    if (!keyVal && !urlVal) {
+      toast('Type a value into at least one field first.', 'err');
+      keyEl.focus();
+      return;
+    }
+
+    var unlock = lock(e.target.querySelector('button[type="submit"]'));
+    api('PUT', '/api/config', patch)
+      .then(function () {
+        toast('Canvas saved.', 'ok');
+        keyEl.value = '';
+        urlEl.value = '';
+        load();
+        window.dispatchEvent(new CustomEvent('config:changed'));
+      })
+      .catch(function (err) { toast('Save failed (' + (err.status || 'network') + ').', 'err'); })
+      .then(unlock);
+  }
+
+  function saveLegacyJarvis(e) {
+    e.preventDefault();
+    var baseEl = $('jarvisApiBase');
+    var tokEl  = $('jarvisApiKey');
+    var baseVal = (baseEl.value || '').trim();
+    var tokVal  = (tokEl.value  || '').trim();
+
+    // Bearer token is optional — base URL is the only required field.
+    // Sending a partial patch means "leave the other field alone".
+    var patch = {};
+    if (baseVal) patch.jarvisApiBase = baseVal;
+    if (tokVal)  patch.jarvisApiKey  = tokVal;
+    if (!baseVal && !tokVal) {
+      toast('Type a value into at least one field first.', 'err');
+      baseEl.focus();
+      return;
+    }
+
+    var unlock = lock(e.target.querySelector('button[type="submit"]'));
+    api('PUT', '/api/config', patch)
+      .then(function () {
+        toast('Legacy JARVIS saved.', 'ok');
+        baseEl.value = '';
+        tokEl.value = '';
+        load();
+        window.dispatchEvent(new CustomEvent('config:changed'));
+      })
+      .catch(function (err) { toast('Save failed (' + (err.status || 'network') + ').', 'err'); })
+      .then(unlock);
+  }
+
+  function saveSystemPrompt(e) {
+    e.preventDefault();
+    var ta = $('systemPrompt');
+    // Empty string is meaningful — the dashboard treats it as
+    // "revert to built-in default", so always include the field.
+    var val = ta.value || '';
+
+    var unlock = lock(e.target.querySelector('button[type="submit"]'));
+    api('PUT', '/api/config', { systemPrompt: val })
+      .then(function () {
+        toast(val ? 'Custom system prompt saved.' : 'Reverted to built-in default.', 'ok');
+        load();
+        window.dispatchEvent(new CustomEvent('config:changed'));
+      })
+      .catch(function (err) { toast('Save failed (' + (err.status || 'network') + ').', 'err'); })
+      .then(unlock);
+  }
+
   // -----------------------------------------------------------------
   // Wire up
   // -----------------------------------------------------------------
   var f1 = $('minimaxForm');
-  var f2 = $('googleForm');
-  var f3 = $('toolForm');
+  var f2 = $('canvasForm');
+  var f3 = $('jarvisLegacyForm');
+  var f4 = $('googleForm');
+  var f5 = $('toolForm');
+  var f6 = $('systemPromptForm');
   if (f1) f1.addEventListener('submit', saveMinimax);
-  if (f2) f2.addEventListener('submit', saveGoogle);
-  if (f3) f3.addEventListener('submit', saveTool);
+  if (f2) f2.addEventListener('submit', saveCanvas);
+  if (f3) f3.addEventListener('submit', saveLegacyJarvis);
+  if (f4) f4.addEventListener('submit', saveGoogle);
+  if (f5) f5.addEventListener('submit', saveTool);
+  if (f6) f6.addEventListener('submit', saveSystemPrompt);
 
   // Initialize all pills to "unknown" so the page doesn't flash empty
   setStatus('minimaxStatus',              null);
+  setStatus('canvasStatus',               null);
+  setStatus('canvasApiKeyStatus',         null);
+  setStatus('canvasBaseUrlStatus',        null);
+  setStatus('jarvisLegacyStatus',         null);
+  setStatus('jarvisApiBaseStatus',        null);
+  setStatus('jarvisApiKeyStatus',         null);
   setStatus('googleStatus',               null);
   setStatus('googleClientIdStatus',       null);
   setStatus('googleClientSecretStatus',   null);

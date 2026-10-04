@@ -14,6 +14,19 @@
      7. Stub every other dashboard endpoint with honest empty
         states so the UI still renders cleanly.
 
+   Optional integrations (configured via /api/config or .env):
+     - Canvas: when canvasApiKey is set, /api/courses/all and
+       /api/canvas/courses/:id/assignments hit the real Canvas
+       instance at canvasBaseUrl. When unset, the endpoints
+       return their empty-state shape.
+     - Legacy JARVIS proxy: when jarvisApiBase is set,
+       un-implemented endpoints (news, plan, holdings, prices,
+       portfolio/history) are proxied upstream; otherwise they
+       fall through to the local honest-empty stubs.
+     - Custom system prompt: config.get('systemPrompt') is
+       prepended to the built-in DEFAULT_SYSTEM_PROMPT on every
+       /api/chat call. Empty string = use the built-in default.
+
    Start:    npm install && npm start
    Then:     http://localhost:8765/
 
@@ -72,7 +85,7 @@ const GOOGLE_SCOPES = [
 ];
 
 // --- System prompt ------------------------------------------------------
-const SYSTEM_PROMPT = `You are JARVIS, Evan's personal dashboard assistant.
+const DEFAULT_SYSTEM_PROMPT = `You are JARVIS, Evan's personal dashboard assistant.
 
 You can read Evan's Canvas courses and upcoming assignments, scan his recent Gmail inbox, list and create Google Calendar events, and manage a small goals list he keeps in the dashboard.
 
@@ -88,6 +101,17 @@ Behavior:
 - Confirm before destructive actions (deleting events, marking many emails read).
 - Never invent data; if a tool returns empty results, tell the user that plainly.
 - Never expose API keys, tokens, or internal endpoint URLs.`;
+
+// Returns the prompt used for /api/chat. If the user has set a
+// non-empty `systemPrompt` via /api/config, it is prepended in front of
+// the built-in default so the LLM honors the user's instructions first
+// while still knowing the server's capabilities. Empty string = revert
+// to the built-in default.
+function buildSystemPrompt() {
+  const custom = config.get('systemPrompt');
+  const base   = DEFAULT_SYSTEM_PROMPT;
+  return custom ? custom + '\n\n---\n\n' + base : base;
+}
 
 // --- Helpers ------------------------------------------------------------
 
@@ -145,6 +169,70 @@ function toolMaxIterations() {
 function internalFetch(pathname, init = {}) {
   const url = `http://127.0.0.1:${PORT}${pathname}`;
   return fetch(url, init);
+}
+
+// --- Canvas API helper --------------------------------------------------
+// Returns { ok: true, data } on success (data is the parsed JSON body),
+// or { ok: false, error } when unconfigured or the upstream fails. The
+// "not configured" message tells the user where to fix it in the UI.
+async function canvasFetch(path, init = {}) {
+  const apiKey = config.get('canvasApiKey');
+  if (!apiKey) {
+    return {
+      ok: false,
+      error: 'Canvas API not configured. Add a Canvas API key in /settings.html.',
+    };
+  }
+  const baseUrl = config.get('canvasBaseUrl') || 'https://elearn.ucr.edu';
+  const headers = Object.assign(
+    { 'Accept': 'application/json' },
+    (init && init.headers) || {}
+  );
+  if (!Object.keys(headers).some((k) => k.toLowerCase() === 'authorization')) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  let upstream;
+  try {
+    upstream = await fetch(`${baseUrl}${path}`, Object.assign({}, init, { headers }));
+  } catch (err) {
+    return { ok: false, error: `Canvas network error: ${(err && err.message) || err}` };
+  }
+  let data = null;
+  try { data = await upstream.json(); }
+  catch (_) { data = null; }
+  if (!upstream.ok) {
+    const detail = data && (data.message || data.errors) ? ` — ${JSON.stringify(data)}` : '';
+    return { ok: false, error: `Canvas HTTP ${upstream.status}${detail}` };
+  }
+  return { ok: true, data };
+}
+
+// --- Legacy JARVIS proxy ------------------------------------------------
+// If jarvisApiBase is set, forward this request to the legacy JARVIS
+// backend and stream its response back. Returns true when the request
+// was handled (caller should return). Returns false when no proxy is
+// configured — callers fall through to their local stub.
+async function proxyToJarvis(req, res) {
+  const base = config.get('jarvisApiBase');
+  if (!base) return false;
+  const url = base + req.originalUrl;
+  const headers = { 'Accept': 'application/json' };
+  const k = config.get('jarvisApiKey');
+  if (k) headers.Authorization = 'Bearer ' + k;
+  let upstream;
+  try {
+    upstream = await fetch(url, { method: req.method, headers });
+  } catch (err) {
+    res.status(502).json({ error: `Upstream JARVIS network error: ${(err && err.message) || err}` });
+    return true;
+  }
+  res.status(upstream.status);
+  const ct = upstream.headers.get('content-type');
+  if (ct) res.setHeader('content-type', ct);
+  else res.setHeader('content-type', 'application/json');
+  const body = await upstream.text();
+  res.send(body);
+  return true;
 }
 
 // --- Goals storage ------------------------------------------------------
@@ -285,16 +373,73 @@ app.get('/oauth/status', (req, res) => {
 });
 
 // --- Stub API routes (honest empty states) -----------------------------
+// Each "legacy" endpoint first asks proxyToJarvis() whether a proxy
+// base URL is configured. If yes, the upstream response is streamed
+// back. If no, the local honest-empty stub runs.
 
-app.get('/api/schedule',                  (req, res) => res.json([]));
-app.get('/api/courses/all',               (req, res) => res.json([]));
-app.get('/api/plan',                      (req, res) => res.json({ error: 'No classes to plan from yet.' }));
-app.get('/api/news',                      (req, res) => res.json({}));
-app.get('/api/holdings',                  (req, res) => res.json([]));
-app.get('/api/prices',                    (req, res) => res.json({ quotes: [], fetched_at: null }));
-app.get('/api/portfolio/history',         (req, res) => res.json([]));
+app.get('/api/schedule', (req, res) => res.json([]));
 
-app.get('/api/canvas/courses/:id/assignments', (req, res) => res.json([]));
+app.get('/api/courses/all', async (req, res) => {
+  const r = await canvasFetch('/api/v1/courses?per_page=50');
+  if (!r.ok) return res.json({ error: r.error });
+  const list = Array.isArray(r.data) ? r.data : [];
+  const courses = list.map((c) => ({
+    id: c.id,
+    code: c.course_code || c.name || '',
+    name: c.name || c.course_code || '',
+    source: 'canvas',
+    currentScorePct: null,
+  }));
+  res.json(courses);
+});
+
+app.get('/api/plan', async (req, res) => {
+  if (await proxyToJarvis(req, res)) return;
+  res.json({ error: 'No classes to plan from yet.' });
+});
+
+app.get('/api/news', async (req, res) => {
+  if (await proxyToJarvis(req, res)) return;
+  res.json({});
+});
+
+app.get('/api/holdings', async (req, res) => {
+  if (await proxyToJarvis(req, res)) return;
+  res.json([]);
+});
+
+app.get('/api/prices', async (req, res) => {
+  if (await proxyToJarvis(req, res)) return;
+  res.json({ quotes: [], fetched_at: null });
+});
+
+app.get('/api/portfolio/history', async (req, res) => {
+  if (await proxyToJarvis(req, res)) return;
+  res.json([]);
+});
+
+app.get('/api/canvas/courses/:id/assignments', async (req, res) => {
+  const id = encodeURIComponent(req.params.id);
+  const r = await canvasFetch(`/api/v1/courses/${id}/assignments?per_page=50`);
+  if (!r.ok) return res.json({ error: r.error });
+  const list = Array.isArray(r.data) ? r.data : [];
+  const assignments = list.map((a) => {
+    let status = 'unsubmitted';
+    if (a && a.workflow_state === 'submitted') {
+      status = 'graded';
+      if (a.submitted_at && (a.grade === null || a.grade === undefined || a.grade === '')) {
+        status = 'submitted';
+      }
+    }
+    return {
+      id: a.id,
+      title: a.name || '',
+      dueDate: a.due_at || null,
+      status,
+    };
+  });
+  res.json(assignments);
+});
 
 // --- Config API ---------------------------------------------------------
 // GET  /api/config — returns the current config with secrets masked.
@@ -313,6 +458,13 @@ app.get('/api/config', (req, res) => {
     googleClientSecretSet: !!c.googleClientSecret,
     googleRedirectUri:     c.googleRedirectUri,
     toolMaxIterations:     c.toolMaxIterations,
+    canvasApiKey:          config.mask(c.canvasApiKey),
+    canvasApiKeySet:       !!c.canvasApiKey,
+    canvasBaseUrl:         c.canvasBaseUrl,
+    jarvisApiBase:         c.jarvisApiBase,
+    jarvisApiKey:          config.mask(c.jarvisApiKey),
+    jarvisApiKeySet:       !!c.jarvisApiKey,
+    systemPrompt:          c.systemPrompt,
     configPath:            config.CONFIG_PATH,
   });
 });
@@ -322,6 +474,9 @@ app.put('/api/config', (req, res) => {
     'minimaxApiKey', 'minimaxBaseUrl', 'minimaxModel',
     'googleClientId', 'googleClientSecret', 'googleRedirectUri',
     'toolMaxIterations',
+    'canvasApiKey', 'canvasBaseUrl',
+    'jarvisApiBase', 'jarvisApiKey',
+    'systemPrompt',
   ];
   const patch = {};
   for (const k of allowed) {
@@ -774,8 +929,10 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'No messages provided.' });
   }
 
-  // System prompt goes in front of whatever the client sent.
-  const messages = [{ role: 'system', content: SYSTEM_PROMPT }, ...userMessages];
+  // System prompt goes in front of whatever the client sent. Re-read
+  // config.get('systemPrompt') on every request so changes via the
+  // settings UI take effect immediately.
+  const messages = [{ role: 'system', content: buildSystemPrompt() }, ...userMessages];
   const allToolCalls = [];
 
   for (let i = 0; i < toolMaxIterations(); i++) {

@@ -108,3 +108,45 @@
 .ph-none { grid-template-columns: 1fr !important; color: var(--c-ink-faint) !important; }
 @media (max-width: 1100px) { .ph-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) { .ph-grid { grid-template-columns: minmax(0, 1fr); } }
+
+
+/* ---- Chat widget · hidden "thinking" disclosure ---- */
+.chat-thinking {
+  margin-top: 6px;
+  border-top: 1px dashed rgba(0, 229, 255, 0.18);
+  padding-top: 4px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--c-ink-faint);
+}
+.chat-thinking > summary {
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--c-cyan);
+  text-transform: uppercase;
+  padding: 2px 0;
+}
+.chat-thinking > summary::-webkit-details-marker { display: none; }
+.chat-thinking > summary::before {
+  content: '▸ ';
+  display: inline-block;
+  transition: transform 0.15s;
+}
+.chat-thinking[open] > summary::before { content: '▾ '; }
+.chat-thinking-body {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--c-line);
+  background: rgba(0, 0, 0, 0.25);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--c-ink-dim);
+  max-height: 320px;
+  overflow: auto;
+}

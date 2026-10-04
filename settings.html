@@ -61,7 +61,120 @@
       </form>
     </section>
 
-    <!-- ===== Section 2: Google OAuth ===== -->
+    <!-- ===== Section 2: Canvas LMS ===== -->
+    <section class="panel" data-section="canvas">
+      <header class="panel-header">
+        <span class="panel-tag">LMS</span>
+        <h2 class="panel-title">CANVAS</h2>
+        <span class="status" id="canvasStatus" data-state="unknown">checking…</span>
+      </header>
+      <p class="panel-blurb">
+        Connects to your school's Canvas instance so the assistant can read
+        upcoming assignments, syllabi, and course materials.
+      </p>
+      <form id="canvasForm" class="cred-form" autocomplete="off">
+        <label class="field">
+          <span class="field-label">
+            API key
+            <span class="status status--inline" id="canvasApiKeyStatus" data-state="unknown">…</span>
+          </span>
+          <input
+            type="password"
+            id="canvasApiKey"
+            name="canvasApiKey"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="paste your Canvas access token"
+          />
+        </label>
+        <p class="saved-preview" id="canvasApiKeySaved">Currently saved: —</p>
+
+        <label class="field">
+          <span class="field-label">
+            Base URL
+            <span class="status status--inline" id="canvasBaseUrlStatus" data-state="unknown">…</span>
+          </span>
+          <input
+            type="text"
+            id="canvasBaseUrl"
+            name="canvasBaseUrl"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://elearn.ucr.edu"
+          />
+        </label>
+        <p class="saved-preview" id="canvasBaseUrlSaved">Currently saved: —</p>
+
+        <p class="field-help">
+          Get a personal access token at
+          <a href="https://elearn.ucr.edu" target="_blank" rel="noopener noreferrer">elearn.ucr.edu</a>
+          → Account → Settings → New Access Token. Use the base URL of your
+          school (e.g., <code>elearn.ucr.edu</code>).
+        </p>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-btn" data-submit="canvas">Save Canvas</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===== Section 3: Legacy JARVIS backend ===== -->
+    <section class="panel" data-section="jarvis-legacy">
+      <header class="panel-header">
+        <span class="panel-tag">BACKEND</span>
+        <h2 class="panel-title">LEGACY JARVIS</h2>
+        <span class="status" id="jarvisLegacyStatus" data-state="unknown">checking…</span>
+      </header>
+      <p class="panel-blurb">
+        Optional bridge to the older JARVIS service if you're running it
+        alongside this dashboard.
+      </p>
+      <form id="jarvisLegacyForm" class="cred-form" autocomplete="off">
+        <label class="field">
+          <span class="field-label">
+            Base URL
+            <span class="status status--inline" id="jarvisApiBaseStatus" data-state="unknown">…</span>
+          </span>
+          <input
+            type="text"
+            id="jarvisApiBase"
+            name="jarvisApiBase"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://jarviss-mac-mini.taile919c2.ts.net:8765"
+          />
+        </label>
+        <p class="saved-preview" id="jarvisApiBaseSaved">Currently saved: —</p>
+
+        <label class="field">
+          <span class="field-label">
+            Bearer token (optional)
+            <span class="status status--inline" id="jarvisApiKeyStatus" data-state="unknown">…</span>
+          </span>
+          <input
+            type="password"
+            id="jarvisApiKey"
+            name="jarvisApiKey"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="paste bearer token, if your legacy instance requires one"
+          />
+        </label>
+        <p class="saved-preview" id="jarvisApiKeySaved">Currently saved: —</p>
+
+        <p class="field-help">
+          If you're running the old JARVIS backend alongside this one, point
+          at its URL so news, portfolio, and other features proxy through.
+          Leave blank to use the built-in stubs.
+        </p>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-btn" data-submit="jarvis-legacy">Save legacy JARVIS</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===== Section 4: Google OAuth ===== -->
     <section class="panel" data-section="google">
       <header class="panel-header">
         <span class="panel-tag">OAUTH</span>
@@ -123,7 +236,7 @@
       </form>
     </section>
 
-    <!-- ===== Section 3: Tool behavior ===== -->
+    <!-- ===== Section 5: Tool behavior ===== -->
     <section class="panel" data-section="tool">
       <header class="panel-header">
         <span class="panel-tag">AGENT</span>
@@ -151,6 +264,40 @@
         </p>
         <div class="form-actions">
           <button type="submit" class="primary-btn" data-submit="tool">Save tool settings</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ===== Section 6: System prompt ===== -->
+    <section class="panel" data-section="system-prompt">
+      <header class="panel-header">
+        <span class="panel-tag">PROMPT</span>
+        <h2 class="panel-title">SYSTEM PROMPT</h2>
+        <span class="status" id="systemPromptStatus" data-state="unknown">checking…</span>
+      </header>
+      <p class="panel-blurb">
+        Override the chat assistant's system prompt. Leave blank to revert to
+        the built-in default.
+      </p>
+      <form id="systemPromptForm" class="cred-form" autocomplete="off">
+        <label class="cred-textarea">
+          <span>Custom system prompt</span>
+          <textarea
+            id="systemPrompt"
+            name="systemPrompt"
+            rows="10"
+            spellcheck="false"
+            placeholder="(leave blank to use the built-in default)"
+          ></textarea>
+        </label>
+        <p class="saved-preview" id="systemPromptSaved">Currently saved: —</p>
+        <p class="field-help">
+          Override the chat assistant's system prompt. Leave blank to use the
+          built-in default. Useful for tuning tone, adding rules, or switching
+          the persona.
+        </p>
+        <div class="form-actions">
+          <button type="submit" class="primary-btn" data-submit="system-prompt">Save system prompt</button>
         </div>
       </form>
     </section>

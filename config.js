@@ -15,6 +15,11 @@ const DEFAULTS = {
   googleClientSecret:   '',
   googleRedirectUri:    'http://127.0.0.1:8765/oauth/callback',
   toolMaxIterations:    10,
+  canvasApiKey:         '',        // personal access token from elearn.ucr.edu → Account → Settings → New Access Token
+  canvasBaseUrl:        'https://elearn.ucr.edu',  // the Canvas instance URL
+  jarvisApiBase:        '',        // optional: if set, proxy the legacy /api/* endpoints through this URL instead of using local stubs
+  jarvisApiKey:         '',        // optional: bearer token to send with proxied requests to jarvisApiBase
+  systemPrompt:         '',        // (empty string = use server's built-in default prompt)
 };
 
 function load() {

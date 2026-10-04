@@ -99,7 +99,11 @@
         renderGrid();
         return;
       }
-      var events = Array.isArray(data && data.events) ? data.events : [];
+      // /api/calendar/aggregated returns a flat array; legacy /api/calendar/events
+      // returns { events: [...] }. Accept either shape.
+      var events = Array.isArray(data)
+        ? data
+        : (Array.isArray(data && data.events) ? data.events : []);
       var items = events.filter(function (e) { return e && e.kind && e.kind !== 'holiday'; });
       var holidays = events.filter(function (e) { return e && e.kind === 'holiday'; });
       state.items = items;
@@ -205,11 +209,40 @@
       return;
     }
 
-    // Empty data state
+    // Empty data state — check whether Google is connected so the message
+    // can either include the connect button (when not) or just explain the
+    // quiet week (when connected).
     if (!state.items.length && !state.holidays.length) {
-      var empty = el('div', 'cal-empty cal-empty-warn',
-        'No events yet. Connect Google Calendar in Settings, or wait for the cron job to sync.');
+      var empty = el('div', 'cal-empty cal-empty-warn');
+      var heading = el('div', 'cal-empty-title', 'Nothing scheduled this week.');
+      empty.appendChild(heading);
+      var oauthHost = el('div', 'cal-empty-oauth');
+      empty.appendChild(oauthHost);
       host.appendChild(empty);
+      // Probe OAuth so we can offer the connect link when relevant.
+      fetchJSON('/oauth/status').then(function (s) {
+        if (s && s.connected) {
+          oauthHost.appendChild(el('div', 'cal-empty-sub',
+            'No Google Calendar events and no upcoming Canvas assignments ' +
+            'in this range. Toggle tabs above to check Classes, Meetings, ' +
+            'or Assignments — or pick a different week with the arrows.'));
+        } else {
+          oauthHost.appendChild(el('div', 'cal-empty-sub',
+            'Google Calendar is not connected. Connect it below to pull ' +
+            'your schedule, meetings, and assignment reminders here.'));
+          var link = el('a', 'cal-empty-cta', 'Connect Google Calendar');
+          link.href = '/oauth/start';
+          link.target = '_self';
+          link.rel = 'noopener';
+          oauthHost.appendChild(link);
+        }
+        updateRangeLabel();
+      }).catch(function () {
+        oauthHost.appendChild(el('div', 'cal-empty-sub',
+          'Could not reach the dashboard server. Refresh the page or ' +
+          'check that server.js is running.'));
+        updateRangeLabel();
+      });
       updateRangeLabel();
       return;
     }

@@ -416,6 +416,44 @@
   border-radius: var(--r-2);
 }
 .cal-empty.cal-empty-warn { color: var(--c-orange); border-color: rgba(255, 145, 0, 0.4); }
+.cal-empty-title {
+  font-family: var(--f-display);
+  font-size: 18px;
+  letter-spacing: 0.08em;
+  color: var(--c-ink);
+  margin-bottom: 10px;
+}
+.cal-empty-sub {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--c-ink-dim);
+  max-width: 520px;
+  margin: 0 auto;
+}
+.cal-empty-oauth {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-top: 4px;
+}
+.cal-empty-cta {
+  display: inline-block;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 10px 22px;
+  border-radius: var(--r-2);
+  background: var(--c-cyan);
+  color: #001017;
+  text-decoration: none;
+  border: 1px solid var(--c-cyan);
+  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+.cal-empty-cta:hover { background: #5ef0ff; }
+.cal-empty-cta:active { transform: translateY(1px); }
 
 /* Study placeholder */
 .cal-study {

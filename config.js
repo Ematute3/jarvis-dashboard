@@ -9,7 +9,7 @@ const CONFIG_PATH = path.join(__dirname, 'runtime-config.json');
 
 const DEFAULTS = {
   minimaxApiKey:        '',
-  minimaxBaseUrl:       'https://api.MiniMax.com/v1',
+  minimaxBaseUrl:       'https://api.MiniMax.io/v1',
   minimaxModel:         'MiniMax-M2',
   googleClientId:       '',
   googleClientSecret:   '',

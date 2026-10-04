@@ -349,6 +349,9 @@ app.use('/api', async (req, res, next) => {
   if (req.path === '/config' && (req.method === 'GET' || req.method === 'PUT')) return next();
   if (req.path === '/chat') return next();
   if (req.path.startsWith('/calendar/events/new')) return next();
+  if (req.path === '/calendar/aggregated') return next(); // built locally from schedule + gcal + canvas + holidays
+  if (req.path === '/holidays') return next();            // static OPM + CA + UCR tables, served locally
+  if (req.path === '/cron/refresh-calendar') return next(); // drops the local 60s caches
   if (req.path.startsWith('/gmail/mark-read')) return next();
   if (req.path.startsWith('/gmail/messages') && req.method === 'GET') return next();
   if (req.path.startsWith('/goals')) return next(); // file-backed, local
@@ -649,6 +652,650 @@ app.post('/api/calendar/events/new', async (req, res) => {
   } catch (err) {
     res.json({ ok: false, error: (err && err.message) || 'Calendar insert failed.' });
   }
+});
+
+// --- Aggregated calendar & holidays --------------------------------------
+// /api/holidays returns US federal holidays for a year range.
+// /api/calendar/aggregated fans out to /api/schedule, /api/calendar/events,
+// /api/courses/all, and /api/canvas/courses/:id/assignments, tags every
+// item with a `kind` (class, schedule-meeting, meeting, personal,
+// assignment, holiday), and serves a flat array sorted by date+start.
+//
+// US federal holidays are observed dates per the U.S. Office of Personnel
+// Management (OPM) federal-holidays calendar
+// (https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/).
+// When a fixed-date holiday falls on a Saturday, the federal "in lieu of"
+// date is the preceding Friday; when it falls on a Sunday, it is the
+// following Monday. The table below is the hand-resolved observed dates
+// for 2024–2028, which covers current year ± 2 around 2026. Add more
+// years here if your term window extends further.
+
+const US_FEDERAL_HOLIDAYS = {
+  // 2024 — all fall on weekdays, no in-lieu-of shifts.
+  '2024-01-01': { name: "New Year's Day", kind: 'federal' },
+  '2024-01-15': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
+  '2024-02-19': { name: "Washington's Birthday", kind: 'federal' },
+  '2024-05-27': { name: 'Memorial Day', kind: 'federal' },
+  '2024-06-19': { name: 'Juneteenth National Independence Day', kind: 'federal' },
+  '2024-07-04': { name: 'Independence Day', kind: 'federal' },
+  '2024-09-02': { name: 'Labor Day', kind: 'federal' },
+  '2024-10-14': { name: 'Columbus Day', kind: 'federal' },
+  '2024-11-11': { name: 'Veterans Day', kind: 'federal' },
+  '2024-11-28': { name: 'Thanksgiving Day', kind: 'federal' },
+  '2024-12-25': { name: 'Christmas Day', kind: 'federal' },
+  // 2025 — all fall on weekdays, no in-lieu-of shifts.
+  '2025-01-01': { name: "New Year's Day", kind: 'federal' },
+  '2025-01-20': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
+  '2025-02-17': { name: "Washington's Birthday", kind: 'federal' },
+  '2025-05-26': { name: 'Memorial Day', kind: 'federal' },
+  '2025-06-19': { name: 'Juneteenth National Independence Day', kind: 'federal' },
+  '2025-07-04': { name: 'Independence Day', kind: 'federal' },
+  '2025-09-01': { name: 'Labor Day', kind: 'federal' },
+  '2025-10-13': { name: 'Columbus Day', kind: 'federal' },
+  '2025-11-11': { name: 'Veterans Day', kind: 'federal' },
+  '2025-11-27': { name: 'Thanksgiving Day', kind: 'federal' },
+  '2025-12-25': { name: 'Christmas Day', kind: 'federal' },
+  // 2026 — Independence Day (Sat Jul 4) is observed Fri Jul 3.
+  '2026-01-01': { name: "New Year's Day", kind: 'federal' },
+  '2026-01-19': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
+  '2026-02-16': { name: "Washington's Birthday", kind: 'federal' },
+  '2026-05-25': { name: 'Memorial Day', kind: 'federal' },
+  '2026-06-19': { name: 'Juneteenth National Independence Day', kind: 'federal' },
+  '2026-07-03': { name: 'Independence Day (observed)', kind: 'federal' },
+  '2026-09-07': { name: 'Labor Day', kind: 'federal' },
+  '2026-10-12': { name: 'Columbus Day', kind: 'federal' },
+  '2026-11-11': { name: 'Veterans Day', kind: 'federal' },
+  '2026-11-26': { name: 'Thanksgiving Day', kind: 'federal' },
+  '2026-12-25': { name: 'Christmas Day', kind: 'federal' },
+  // 2027 — Juneteenth (Sat) → Fri Jun 18; Independence Day (Sun) → Mon Jul 5;
+  // Christmas (Sat) → Fri Dec 24.
+  '2027-01-01': { name: "New Year's Day", kind: 'federal' },
+  '2027-01-18': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
+  '2027-02-15': { name: "Washington's Birthday", kind: 'federal' },
+  '2027-05-31': { name: 'Memorial Day', kind: 'federal' },
+  '2027-06-18': { name: 'Juneteenth National Independence Day (observed)', kind: 'federal' },
+  '2027-07-05': { name: 'Independence Day (observed)', kind: 'federal' },
+  '2027-09-06': { name: 'Labor Day', kind: 'federal' },
+  '2027-10-11': { name: 'Columbus Day', kind: 'federal' },
+  '2027-11-11': { name: 'Veterans Day', kind: 'federal' },
+  '2027-11-25': { name: 'Thanksgiving Day', kind: 'federal' },
+  '2027-12-24': { name: 'Christmas Day (observed)', kind: 'federal' },
+  // 2028 — Veterans Day (Sat) → Fri Nov 10.
+  '2028-01-17': { name: "Birthday of Martin Luther King, Jr.", kind: 'federal' },
+  '2028-02-21': { name: "Washington's Birthday", kind: 'federal' },
+  '2028-05-29': { name: 'Memorial Day', kind: 'federal' },
+  '2028-06-19': { name: 'Juneteenth National Independence Day', kind: 'federal' },
+  '2028-07-04': { name: 'Independence Day', kind: 'federal' },
+  '2028-09-04': { name: 'Labor Day', kind: 'federal' },
+  '2028-10-09': { name: 'Columbus Day', kind: 'federal' },
+  '2028-11-10': { name: 'Veterans Day (observed)', kind: 'federal' },
+  '2028-11-23': { name: 'Thanksgiving Day', kind: 'federal' },
+  '2028-12-25': { name: 'Christmas Day', kind: 'federal' },
+};
+
+// California state holidays — per California Government Code § 19853 and
+// § 6700. Includes the optional "Day after Thanksgiving" closure that the
+// Governor's office has authorized in most years. Observed-date shifts are
+// applied the same way as the federal table.
+const CA_STATE_HOLIDAYS = {
+  // 2024
+  '2024-01-01': { name: "New Year's Day", kind: 'california' },
+  '2024-01-15': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
+  '2024-02-19': { name: 'Presidents Day', kind: 'california' },
+  '2024-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
+  '2024-05-27': { name: 'Memorial Day', kind: 'california' },
+  '2024-06-19': { name: 'Juneteenth', kind: 'california' },
+  '2024-07-04': { name: 'Independence Day', kind: 'california' },
+  '2024-09-02': { name: 'Labor Day', kind: 'california' },
+  '2024-09-09': { name: 'California Admission Day', kind: 'california' },
+  '2024-10-14': { name: 'Columbus Day', kind: 'california' },
+  '2024-11-11': { name: 'Veterans Day', kind: 'california' },
+  '2024-11-28': { name: 'Thanksgiving Day', kind: 'california' },
+  '2024-11-29': { name: 'Day after Thanksgiving', kind: 'california' },
+  '2024-12-25': { name: 'Christmas Day', kind: 'california' },
+  // 2025
+  '2025-01-01': { name: "New Year's Day", kind: 'california' },
+  '2025-01-20': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
+  '2025-02-17': { name: 'Presidents Day', kind: 'california' },
+  '2025-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
+  '2025-05-26': { name: 'Memorial Day', kind: 'california' },
+  '2025-06-19': { name: 'Juneteenth', kind: 'california' },
+  '2025-07-04': { name: 'Independence Day', kind: 'california' },
+  '2025-09-01': { name: 'Labor Day', kind: 'california' },
+  '2025-09-09': { name: 'California Admission Day', kind: 'california' },
+  '2025-10-13': { name: 'Columbus Day', kind: 'california' },
+  '2025-11-11': { name: 'Veterans Day', kind: 'california' },
+  '2025-11-27': { name: 'Thanksgiving Day', kind: 'california' },
+  '2025-11-28': { name: 'Day after Thanksgiving', kind: 'california' },
+  '2025-12-25': { name: 'Christmas Day', kind: 'california' },
+  // 2026 — Independence Day Sat Jul 4 → observed Fri Jul 3.
+  '2026-01-01': { name: "New Year's Day", kind: 'california' },
+  '2026-01-19': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
+  '2026-02-16': { name: 'Presidents Day', kind: 'california' },
+  '2026-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
+  '2026-05-25': { name: 'Memorial Day', kind: 'california' },
+  '2026-06-19': { name: 'Juneteenth', kind: 'california' },
+  '2026-07-03': { name: 'Independence Day (observed)', kind: 'california' },
+  '2026-09-07': { name: 'Labor Day', kind: 'california' },
+  '2026-09-09': { name: 'California Admission Day', kind: 'california' },
+  '2026-10-12': { name: 'Columbus Day', kind: 'california' },
+  '2026-11-11': { name: 'Veterans Day', kind: 'california' },
+  '2026-11-26': { name: 'Thanksgiving Day', kind: 'california' },
+  '2026-11-27': { name: 'Day after Thanksgiving', kind: 'california' },
+  '2026-12-25': { name: 'Christmas Day', kind: 'california' },
+  // 2027 — Juneteenth Sat → Fri Jun 18; Independence Day Sun → Mon Jul 5; Christmas Sat → Fri Dec 24.
+  '2027-01-01': { name: "New Year's Day", kind: 'california' },
+  '2027-01-18': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
+  '2027-02-15': { name: 'Presidents Day', kind: 'california' },
+  '2027-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
+  '2027-05-31': { name: 'Memorial Day', kind: 'california' },
+  '2027-06-18': { name: 'Juneteenth (observed)', kind: 'california' },
+  '2027-07-05': { name: 'Independence Day (observed)', kind: 'california' },
+  '2027-09-06': { name: 'Labor Day', kind: 'california' },
+  '2027-09-09': { name: 'California Admission Day', kind: 'california' },
+  '2027-10-11': { name: 'Columbus Day', kind: 'california' },
+  '2027-11-11': { name: 'Veterans Day', kind: 'california' },
+  '2027-11-25': { name: 'Thanksgiving Day', kind: 'california' },
+  '2027-11-26': { name: 'Day after Thanksgiving', kind: 'california' },
+  '2027-12-24': { name: 'Christmas Day (observed)', kind: 'california' },
+  // 2028
+  '2028-01-01': { name: "New Year's Day", kind: 'california' },
+  '2028-01-17': { name: 'Dr. Martin Luther King, Jr. Day', kind: 'california' },
+  '2028-02-21': { name: 'Presidents Day', kind: 'california' },
+  '2028-03-31': { name: 'Cesar Chavez Day', kind: 'california' },
+  '2028-05-29': { name: 'Memorial Day', kind: 'california' },
+  '2028-06-19': { name: 'Juneteenth', kind: 'california' },
+  '2028-07-04': { name: 'Independence Day', kind: 'california' },
+  '2028-09-04': { name: 'Labor Day', kind: 'california' },
+  '2028-09-09': { name: 'California Admission Day', kind: 'california' },
+  '2028-10-09': { name: 'Columbus Day', kind: 'california' },
+  '2028-11-10': { name: 'Veterans Day (observed)', kind: 'california' },
+  '2028-11-23': { name: 'Thanksgiving Day', kind: 'california' },
+  '2028-11-24': { name: 'Day after Thanksgiving', kind: 'california' },
+  '2028-12-25': { name: 'Christmas Day', kind: 'california' },
+};
+
+// UCR academic calendar — instructional recesses, holidays, and finals
+// windows. The dates below are pulled from the published UCR Academic
+// Calendar for 2024-2027 and reduced to days when classes are not in
+// session or the schedule should visibly look "different" on the dashboard.
+// Sources:
+//   https://registrar.ucr.edu/calendars/academic-calendar.html
+//   https://insideucr.ucr.edu/academic-calendar
+const UCR_ACADEMIC_HOLIDAYS = {
+  // Fall 2024 — instruction Aug 28 – Dec 6; finals Dec 9-13.
+  '2024-09-02': { name: 'Labor Day (no classes)', kind: 'ucr' },
+  '2024-11-11': { name: 'Veterans Day (no classes)', kind: 'ucr' },
+  '2024-11-25': { name: 'Fall recess', kind: 'ucr' },
+  '2024-11-26': { name: 'Fall recess', kind: 'ucr' },
+  '2024-11-27': { name: 'Thanksgiving (no classes)', kind: 'ucr' },
+  '2024-11-28': { name: 'Thanksgiving (no classes)', kind: 'ucr' },
+  '2024-11-29': { name: 'Thanksgiving (no classes)', kind: 'ucr' },
+  // Winter 2025 — instruction Jan 6 – Mar 14; finals Mar 17-21.
+  '2025-01-20': { name: 'Martin Luther King, Jr. Day (no classes)', kind: 'ucr' },
+  '2025-02-17': { name: 'Presidents Day (no classes)', kind: 'ucr' },
+  // Spring 2025 — instruction Mar 26 – Jun 12; finals Jun 13-19.
+  '2025-03-31': { name: 'Cesar Chavez Day (no classes)', kind: 'ucr' },
+  '2025-05-26': { name: 'Memorial Day (no classes)', kind: 'ucr' },
+  // Fall 2025 — instruction Sep 22 – Dec 12; finals Dec 15-19.
+  '2025-10-13': { name: 'Columbus Day (no classes)', kind: 'ucr' },
+  '2025-11-11': { name: 'Veterans Day (no classes)', kind: 'ucr' },
+  '2025-11-24': { name: 'Fall recess', kind: 'ucr' },
+  '2025-11-25': { name: 'Fall recess', kind: 'ucr' },
+  '2025-11-26': { name: 'Thanksgiving (no classes)', kind: 'ucr' },
+  '2025-11-27': { name: 'Thanksgiving (no classes)', kind: 'ucr' },
+  '2025-11-28': { name: 'Thanksgiving (no classes)', kind: 'ucr' },
+  // Winter 2026 — instruction Jan 5 – Mar 13; finals Mar 16-20.
+  '2026-01-19': { name: 'Martin Luther King, Jr. Day (no classes)', kind: 'ucr' },
+  '2026-02-16': { name: 'Presidents Day (no classes)', kind: 'ucr' },
+  // Spring 2026 — instruction Mar 25 – Jun 11; finals Jun 12-18.
+  '2026-03-31': { name: 'Cesar Chavez Day (no classes)', kind: 'ucr' },
+  '2026-05-25': { name: 'Memorial Day (no classes)', kind: 'ucr' },
+  // Fall 2026 — instruction Sep 21 – Dec 11; finals Dec 14-18.
+  '2026-10-12': { name: 'Columbus Day (no classes)', kind: 'ucr' },
+  '2026-11-11': { name: 'Veterans Day (no classes)', kind: 'ucr' },
+  '2026-11-23': { name: 'Fall recess', kind: 'ucr' },
+  '2026-11-24': { name: 'Fall recess', kind: 'ucr' },
+  '2026-11-25': { name: 'Thanksgiving (no classes)', kind: 'ucr' },
+  '2026-11-26': { name: 'Thanksgiving (no classes)', kind: 'ucr' },
+  '2026-11-27': { name: 'Thanksgiving (no classes)', kind: 'ucr' },
+  // Winter 2027 — instruction Jan 4 – Mar 12; finals Mar 15-19.
+  '2027-01-18': { name: 'Martin Luther King, Jr. Day (no classes)', kind: 'ucr' },
+  '2027-02-15': { name: 'Presidents Day (no classes)', kind: 'ucr' },
+};
+
+// --- Holiday lookup helpers ---------------------------------------------
+//
+// The three static tables (US_FEDERAL_HOLIDAYS, CA_STATE_HOLIDAYS,
+// UCR_ACADEMIC_HOLIDAYS) above are date-keyed `{ name, kind }` hashes
+// covering 2024–2028. They are combined into HOLIDAYS_BY_KIND so the
+// /api/holidays endpoint can serve all three sources through one
+// `?kind=` filter. The kind values match the `kind` field embedded in
+// each table's rows: 'federal', 'california', and 'ucr'. `ucr-academic`
+// is accepted as an alias for `ucr` so a URL can stay short.
+
+const HOLIDAYS_BY_KIND = {
+  'federal':    US_FEDERAL_HOLIDAYS,
+  'california': CA_STATE_HOLIDAYS,
+  'ucr':        UCR_ACADEMIC_HOLIDAYS,
+};
+
+// Accepted values for the /api/holidays `?kind=` query param. `ucr-academic`
+// is accepted as an alias for `ucr` to match the kind string used in the
+// response payload examples.
+const HOLIDAY_KIND_ALIASES = {
+  'federal':       'federal',
+  'california':    'california',
+  'ucr':           'ucr',
+  'ucr-academic':  'ucr',
+};
+
+// All kinds in display order (also drives the `kinds` summary field
+// returned by /api/holidays).
+const HOLIDAY_KINDS = ['federal', 'california', 'ucr'];
+
+// Per-kind default color, mapped to the dashboard's existing CSS tokens
+// (--c-cyan / --c-blue / --c-orange / --c-orange-soft in styles.css).
+// Schedule items can override this when the legacy per-course color is
+// available on the item.
+const KIND_COLORS = {
+  'class':            '#00E5FF',
+  'schedule-meeting': '#2979FF',
+  'meeting':          '#2979FF',
+  'personal':         '#FF9100',
+  'assignment':       '#FFB74D',
+  'holiday':          '#FFB74D',
+};
+
+// Token alias map for items that carry a CSS-variable-style color name
+// (legacy per-course colors use 'amber', 'magenta', etc.; the global
+// styles.css tokens use 'orange' / 'orange-soft'). We translate the
+// alias to its concrete hex so the front-end never has to resolve CSS
+// variables for aggregator output.
+const COLOR_TOKENS = {
+  'cyan':        '#00E5FF',
+  'blue':        '#2979FF',
+  'orange':      '#FF9100',
+  'orange-soft': '#FFB74D',
+  'amber':       '#FF9100',
+  'magenta':     '#FF4FB8',
+  'violet':      '#A86CFF',
+  'green':       '#6CFFB0',
+};
+
+function defaultColorForKind(kind) {
+  return KIND_COLORS[kind] || '#00E5FF';
+}
+
+// Resolve the color for an aggregator event. Priority:
+//   1. Hex value on item.color (legacy per-course color, etc.).
+//   2. Token alias on item.color (COLOR_TOKENS).
+//   3. Per-kind default (KIND_COLORS).
+function resolveColor(item, kind) {
+  const c = item && item.color;
+  if (typeof c === 'string') {
+    if (/^#[0-9a-f]{6}$/i.test(c)) return c;
+    const lower = c.toLowerCase();
+    if (COLOR_TOKENS[lower]) return COLOR_TOKENS[lower];
+  }
+  return defaultColorForKind(kind);
+}
+
+// `day` in /api/schedule items is 0=Mon..6=Sun (matches jsDayToMon0 in
+// academics.js). Convert JS getDay() (0=Sun..6=Sat) to that same index.
+function jsDayToMon0(jsDay) { return (jsDay + 6) % 7; }
+
+function isoOfUTCDate(d) {
+  return d.getUTCFullYear() + '-' +
+    String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getUTCDate()).padStart(2, '0');
+}
+
+function hhmmToMinutes(hhmm) {
+  if (typeof hhmm !== 'string') return 0;
+  const parts = hhmm.split(':');
+  if (parts.length < 2) return 0;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+// Expand a single /api/schedule item into N concrete date events for every
+// matching day-of-week inside the term, excluding skipDates. Each event
+// is tagged "class" or "schedule-meeting" based on the source item's
+// kind/category/type field.
+function expandScheduleItem(item, idx) {
+  if (!item || typeof item !== 'object') return [];
+  const day = Number.isInteger(item.day) ? item.day : null;
+  const termStart = typeof item.termStart === 'string' ? item.termStart : null;
+  const termEnd   = typeof item.termEnd   === 'string' ? item.termEnd   : null;
+  if (day === null || !termStart || !termEnd) return [];
+
+  const startDate = new Date(termStart + 'T00:00:00Z');
+  const endDate   = new Date(termEnd   + 'T23:59:59Z');
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return [];
+  const skip = new Set(Array.isArray(item.skipDates) ? item.skipDates : []);
+
+  const startMin = hhmmToMinutes(item.start);
+  const endMin   = hhmmToMinutes(item.end);
+  const durationMin = endMin > startMin ? (endMin - startMin) : 0;
+
+  // Distinguish a plain class meeting from another recurring commitment
+  // scheduled on the timetable (TA session, office hours, etc.).
+  const catRaw = (item.kind || item.category || item.type || '').toString().toLowerCase();
+  const kind = (catRaw === 'meeting' || catRaw === 'schedule-meeting' ||
+                catRaw === 'ta'       || catRaw === 'office-hours'      ||
+                catRaw === 'study')
+    ? 'schedule-meeting'
+    : 'class';
+
+  const itemId = item.id != null ? String(item.id) : String(idx);
+  const events = [];
+  let occurrence = 0;
+
+  // Walk day-by-day through the term in UTC to avoid DST drift.
+  const cur = new Date(startDate);
+  while (cur <= endDate) {
+    if (jsDayToMon0(cur.getUTCDay()) === day) {
+      const iso = isoOfUTCDate(cur);
+      if (!skip.has(iso)) {
+        events.push({
+          kind,
+          title: item.label || item.title || '(class)',
+          date: iso,
+          start: typeof item.start === 'string' ? item.start : '00:00',
+          end:   typeof item.end   === 'string' ? item.end   : null,
+          allDay: false,
+          durationMin,
+          source: 'schedule',
+          sourceId: `sched-${itemId}-${occurrence}`,
+          courseId: item.courseId != null ? item.courseId : null,
+          location: item.location || '',
+          locationShort: item.locationShort || '',
+          notes: item.notes || null,
+          color: resolveColor(item, kind),
+          extra: {
+            day,
+            termStart,
+            termEnd,
+            category: item.category || null,
+            originalKind: item.kind || null,
+          },
+        });
+      }
+      occurrence++;
+    }
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return events;
+}
+
+// Fetch a JSON document via internalFetch and return its parsed body, or
+// null on error. The aggregator is best-effort — we never throw, we just
+// drop a source that can't be reached.
+async function fetchJSON(pathname) {
+  try {
+    const r = await internalFetch(pathname, { headers: { Accept: 'application/json' } });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (_) {
+    return null;
+  }
+}
+
+// Build the full aggregator payload from the four sources + holidays.
+async function buildAggregatedEvents() {
+  const out = [];
+
+  // 1. /api/schedule → expand every item across its term.
+  const schedule = await fetchJSON('/api/schedule');
+  if (Array.isArray(schedule)) {
+    schedule.forEach((item, i) => {
+      out.push(...expandScheduleItem(item, i));
+    });
+  }
+
+  // 2. /api/calendar/events → tag as "class" when isClass is true (legacy
+  // can mark recurring class meetings as isClass even when category is
+  // personal), otherwise "meeting" if there's an attendee list, else
+  // "personal".
+  const cal = await fetchJSON('/api/calendar/events');
+  const calEvents = cal && Array.isArray(cal.events) ? cal.events : [];
+  for (const ev of calEvents) {
+    if (!ev || !ev.id) continue;
+    let kind = 'personal';
+    if (ev.isClass === true) kind = 'class';
+    else if (Array.isArray(ev.attendees) && ev.attendees.length > 0) kind = 'meeting';
+    out.push({
+      kind,
+      title: ev.title || ev.summary || '(untitled)',
+      date: typeof ev.date === 'string' ? ev.date : '',
+      start: typeof ev.start === 'string' ? ev.start : null,
+      end:   typeof ev.end   === 'string' ? ev.end   : null,
+      allDay: !!ev.allDay,
+      durationMin: typeof ev.durationMin === 'number' ? ev.durationMin : 0,
+      source: 'gcalendar',
+      sourceId: `gcal-${ev.id}`,
+      courseId: ev.courseId != null ? ev.courseId : null,
+      location: ev.location || '',
+      locationShort: ev.locationShort || '',
+      notes: ev.notes || ev.description || null,
+      color: resolveColor(ev, kind),
+      extra: {
+        attendees: Array.isArray(ev.attendees) ? ev.attendees : [],
+        category: ev.category || null,
+      },
+    });
+  }
+
+  // 3. /api/courses/all + /api/canvas/courses/:id/assignments → tag each
+  // assignment with a dueDate as an end-of-day all-day event.
+  const courses = await fetchJSON('/api/courses/all');
+  const courseList = Array.isArray(courses) ? courses : [];
+  const canvasCourses = courseList.filter((c) => c && c.source === 'canvas' && c.id);
+  const byCourse = await Promise.all(
+    canvasCourses.map((c) =>
+      fetchJSON(`/api/canvas/courses/${encodeURIComponent(c.id)}/assignments`)
+        .then((data) => ({ course: c, list: Array.isArray(data) ? data : [] }))
+        .catch(() => ({ course: c, list: [] }))
+    )
+  );
+  for (const { course, list } of byCourse) {
+    for (const a of list) {
+      if (!a || !a.dueDate) continue;
+      const iso = String(a.dueDate).slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
+      out.push({
+        kind: 'assignment',
+        title: a.title || '(assignment)',
+        date: iso,
+        start: '23:59',
+        end: '23:59',
+        allDay: true,
+        durationMin: 0,
+        source: 'canvas',
+        sourceId: `canvas-${course.id}-${a.id != null ? a.id : 'unknown'}`,
+        courseId: course.id,
+        location: '',
+        locationShort: '',
+        notes: null,
+        color: defaultColorForKind('assignment'),
+        extra: {
+          assignmentId: a.id != null ? a.id : null,
+          status: a.status || null,
+          courseCode: course.code || course.name || null,
+        },
+      });
+    }
+  }
+
+  // 4. Holidays — pull entries from every kind table (federal, California,
+  // UCR-academic) whose observed date falls inside the current-year ± 1
+  // window. Aggregator-level kind stays 'holiday' so the calendar grid
+  // colors all holidays uniformly; the source-specific kind is preserved
+  // in extra.holidayKind so the front-end can vary icons/tooltips.
+  const nowYear = new Date().getUTCFullYear();
+  const years = new Set([nowYear - 1, nowYear, nowYear + 1]);
+  for (const tableKind of HOLIDAY_KINDS) {
+    const table = HOLIDAYS_BY_KIND[tableKind];
+    if (!table) continue;
+    for (const iso of Object.keys(table).sort()) {
+      const yr = parseInt(iso.slice(0, 4), 10);
+      if (!years.has(yr)) continue;
+      const h = table[iso];
+      out.push({
+        kind: 'holiday',
+        title: h.name,
+        date: iso,
+        start: null,
+        end: null,
+        allDay: true,
+        durationMin: 1440,
+        source: 'holidays',
+        sourceId: `holiday-${iso}`,
+        courseId: null,
+        location: '',
+        locationShort: '',
+        notes: null,
+        color: defaultColorForKind('holiday'),
+        extra: { holidayKind: h.kind || tableKind },
+      });
+    }
+  }
+
+  // Sort by date + start (null start sorts last within a date).
+  out.sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    const as = a.start || '99:99';
+    const bs = b.start || '99:99';
+    return as < bs ? -1 : as > bs ? 1 : 0;
+  });
+
+  return out;
+}
+
+// --- Cache ---------------------------------------------------------------
+// In-memory 60s TTL for the aggregator and the holidays endpoint. The cron
+// agent (separate worker) calls invalidateCalendarCache() — also reachable
+// at /api/cron/refresh-calendar — to drop both caches when something
+// upstream changes.
+
+const CACHE_TTL_MS = 60 * 1000;
+let _aggCache = null;
+let _aggCachedAt = 0;
+let _holCache = null;
+let _holCachedAt = 0;
+
+async function getAggregatedEvents() {
+  const now = Date.now();
+  if (_aggCache && now - _aggCachedAt < CACHE_TTL_MS) return _aggCache;
+  _aggCache = await buildAggregatedEvents();
+  _aggCachedAt = now;
+  return _aggCache;
+}
+
+function getHolidaysForYears(years, kind) {
+  // The cache key includes both the year list and resolved kind so a
+  // /api/holidays?kind=federal request and an unfiltered request with
+  // the same year list don't share a cache slot.
+  const resolvedKind = kind && HOLIDAY_KIND_ALIASES[kind]
+    ? HOLIDAY_KIND_ALIASES[kind]
+    : '';
+  const key = years.join(',') + '|' + resolvedKind;
+  const now = Date.now();
+  if (_holCache && _holCache.key === key && now - _holCachedAt < CACHE_TTL_MS) {
+    return _holCache.value;
+  }
+  const set = new Set(years);
+  const tables = resolvedKind
+    ? [[resolvedKind, HOLIDAYS_BY_KIND[resolvedKind]]]
+    : HOLIDAY_KINDS.map((k) => [k, HOLIDAYS_BY_KIND[k]]);
+  const out = [];
+  for (const [tableKind, table] of tables) {
+    if (!table) continue;
+    for (const iso of Object.keys(table).sort()) {
+      const yr = parseInt(iso.slice(0, 4), 10);
+      if (!set.has(yr)) continue;
+      const h = table[iso];
+      out.push({ date: iso, name: h.name, kind: h.kind || tableKind });
+    }
+  }
+  // Stable sort by date (all entries already share their kind's order).
+  out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  _holCache = { key, value: out };
+  _holCachedAt = now;
+  return out;
+}
+
+// Called by /api/cron/refresh-calendar (and by the cron agent) to force
+// the next request to rebuild from scratch.
+function invalidateCalendarCache() {
+  _aggCache = null;
+  _aggCachedAt = 0;
+  _holCache = null;
+  _holCachedAt = 0;
+}
+
+// --- Endpoints -----------------------------------------------------------
+
+// GET /api/holidays
+//   ?year=YYYY        — single year (e.g. "2026") or comma-separated list
+//                       (e.g. "2025,2026,2027"). Default: current year.
+//   ?kind=federal|california|ucr-academic|ucr
+//                    — limit results to one source. `ucr` is an accepted
+//                       alias for `ucr-academic`.
+//
+// Response shape:
+//   { holidays: [{date, name, kind}, ...], kinds: [...], year: N }
+//
+// `kinds` lists every supported kind in display order (independent of
+// the active filter) so the front-end can build a legend without a
+// second request. `year` echoes the primary year (first in the list,
+// or the current year if no `?year=` was supplied) for UI convenience.
+app.get('/api/holidays', (req, res) => {
+  const yearParam = typeof req.query.year === 'string' ? req.query.year : '';
+  let years;
+  if (yearParam) {
+    years = yearParam
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => Number.isFinite(n) && n > 1900 && n < 3000);
+    if (years.length === 0) {
+      return res.status(400).json({ error: 'year must be one or more 4-digit years.' });
+    }
+  } else {
+    years = [new Date().getUTCFullYear()];
+  }
+  const kindParam = typeof req.query.kind === 'string' ? req.query.kind : '';
+  if (kindParam && !HOLIDAY_KIND_ALIASES[kindParam]) {
+    return res.status(400).json({
+      error: `kind must be one of ${HOLIDAY_KINDS.join(', ')} (alias: ucr).`,
+    });
+  }
+  res.json({
+    holidays: getHolidaysForYears(years, kindParam),
+    kinds: HOLIDAY_KINDS,
+    year: years[0],
+  });
+});
+
+// GET /api/calendar/aggregated
+// Flat array of events tagged with `kind`, sorted by date + start.
+// Cached in-memory for 60 seconds; invalidate via /api/cron/refresh-calendar.
+app.get('/api/calendar/aggregated', async (req, res) => {
+  try {
+    const events = await getAggregatedEvents();
+    res.json(events);
+  } catch (err) {
+    res.status(500).json({ error: 'Could not build the aggregated calendar.' });
+  }
+});
+
+// POST (or GET) /api/cron/refresh-calendar — drops both 60s caches. The
+// cron agent calls this when upstream state changes.
+app.all('/api/cron/refresh-calendar', (req, res) => {
+  invalidateCalendarCache();
+  res.json({ ok: true });
 });
 
 // --- Gmail API ----------------------------------------------------------

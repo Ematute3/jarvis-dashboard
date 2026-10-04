@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#080c16" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <title>JARVIS · Calendar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -15,200 +16,51 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="home.css" />
   <link rel="stylesheet" href="extras.css" />
-  <style>
-    .settings-bar { grid-template-columns: auto 1fr auto; }
-    .page {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 16px;
-      padding: 18px;
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-    .empty-state {
-      font-family: var(--f-mono);
-      font-size: 12px;
-      letter-spacing: 0.08em;
-      color: var(--c-ink-dim);
-      padding: 28px 16px;
-      text-align: center;
-      border: 1px dashed var(--c-line);
-      border-radius: var(--r-2);
-    }
-    .cal-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .cal-row {
-      display: grid;
-      grid-template-columns: 110px minmax(0, 1fr);
-      align-items: center;
-      gap: 14px;
-      padding: 10px 12px;
-      border: 1px solid var(--c-line-soft);
-      border-radius: var(--r-2);
-      background: rgba(0, 0, 0, 0.25);
-    }
-    .cal-when {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      font-family: var(--f-mono);
-      letter-spacing: 0.06em;
-    }
-    .cal-day {
-      font-size: 10px;
-      letter-spacing: 0.2em;
-      color: var(--c-cyan);
-      text-transform: uppercase;
-    }
-    .cal-time {
-      font-size: 12px;
-      color: var(--c-ink);
-    }
-    .cal-main {
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .cal-title {
-      font-family: var(--f-body);
-      font-size: 13px;
-      color: var(--c-ink);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .cal-loc {
-      font-family: var(--f-mono);
-      font-size: 10px;
-      letter-spacing: 0.1em;
-      color: var(--c-ink-faint);
-      text-transform: uppercase;
-    }
-  </style>
-  <title>JARVIS · Calendar</title>
+  <link rel="stylesheet" href="calendar.css" />
 </head>
 <body class="page-shell">
 
-  <header class="topbar settings-bar" role="banner">
-    <a class="topbar-back" href="index.html" title="Back to dashboard">← DASHBOARD</a>
-    <div class="topbar-title">CALENDAR</div>
-    <div class="topbar-meta" id="calStatus">checking…</div>
+  <header class="cal-topbar" role="banner">
+    <a class="cal-back" href="index.html" title="Back to dashboard">&larr; DASHBOARD</a>
+    <div class="cal-title-block">
+      <h1 class="cal-title">CALENDAR</h1>
+      <div class="cal-sub" id="calSub">Loading aggregated events&hellip;</div>
+    </div>
+    <div class="cal-topbar-right">
+      <span class="cal-status" id="calStatus">checking&hellip;</span>
+      <button class="cal-refresh" id="calRefresh" type="button" title="Refresh from server">REFRESH</button>
+    </div>
   </header>
 
-  <main class="page" role="main">
-    <section class="panel" aria-label="Upcoming events">
-      <div class="panel-header">
-        <h2 class="panel-title">UPCOMING · GOOGLE CALENDAR</h2>
-        <span class="panel-tag" id="calCount">0 EVENTS</span>
+  <nav class="cal-tabs" role="tablist" aria-label="Calendar tabs">
+    <button class="cal-tab is-active" role="tab" aria-selected="true" data-tab="overview" type="button">OVERVIEW</button>
+    <button class="cal-tab" role="tab" aria-selected="false" data-tab="classes" type="button">CLASSES</button>
+    <button class="cal-tab" role="tab" aria-selected="false" data-tab="meetings" type="button">MEETINGS</button>
+    <button class="cal-tab" role="tab" aria-selected="false" data-tab="assignments" type="button">ASSIGNMENTS</button>
+    <button class="cal-tab" role="tab" aria-selected="false" data-tab="study" type="button">STUDY</button>
+  </nav>
+
+  <main class="cal-page" role="main">
+
+    <section class="cal-toolbar panel" aria-label="Week navigation">
+      <div class="cal-week-nav">
+        <button class="cal-nav-btn" id="calPrev" type="button" aria-label="Previous week">&lsaquo;</button>
+        <button class="cal-today-btn" id="calToday" type="button">TODAY</button>
+        <button class="cal-nav-btn" id="calNext" type="button" aria-label="Next week">&rsaquo;</button>
       </div>
-      <ul class="cal-list" id="calList">
-        <li class="empty-state">Loading events…</li>
-      </ul>
+      <div class="cal-range" id="calRange">&hellip;</div>
+      <label class="cal-month-pick">
+        <span class="cal-month-label">MONTH</span>
+        <select id="calMonth" class="cal-month-select"></select>
+      </label>
     </section>
+
+    <section class="cal-grid panel" id="calGridHost" aria-label="Week view">
+      <div class="cal-empty" id="calEmpty">Loading&hellip;</div>
+    </section>
+
   </main>
 
-  <script>
-    (function () {
-      'use strict';
-      function el(id) { return document.getElementById(id); }
-      function fetchJSON(url) {
-        return fetch(url).then(function (r) {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        });
-      }
-      function fmtDay(s) {
-        var d = new Date(s);
-        if (isNaN(d.getTime())) return '';
-        return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
-      }
-      function fmtTime(s) {
-        if (!s) return '';
-        var d = new Date(s);
-        if (isNaN(d.getTime())) return '';
-        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
-      function render(events) {
-        var ul = el('calList');
-        ul.replaceChildren();
-        if (!events.length) {
-          var li = document.createElement('li');
-          li.className = 'empty-state';
-          li.textContent = 'No upcoming events.';
-          ul.appendChild(li);
-          el('calCount').textContent = '0 EVENTS';
-          return;
-        }
-        events.forEach(function (ev) {
-          var start = ev.start || (ev.start && ev.start.dateTime) || ev.date;
-          var end = ev.end || (ev.end && ev.end.dateTime);
-          var row = document.createElement('li');
-          row.className = 'cal-row';
-          var when = document.createElement('div');
-          when.className = 'cal-when';
-          var day = document.createElement('span');
-          day.className = 'cal-day';
-          day.textContent = fmtDay(start);
-          var t = document.createElement('span');
-          t.className = 'cal-time';
-          var ts = fmtTime(start);
-          var te = fmtTime(end);
-          t.textContent = ts && te ? (ts + ' – ' + te) : (ts || '');
-          when.appendChild(day);
-          when.appendChild(t);
-          var main = document.createElement('div');
-          main.className = 'cal-main';
-          var title = document.createElement('span');
-          title.className = 'cal-title';
-          title.textContent = ev.summary || ev.title || 'Untitled event';
-          main.appendChild(title);
-          if (ev.location) {
-            var loc = document.createElement('span');
-            loc.className = 'cal-loc';
-            loc.textContent = ev.location;
-            main.appendChild(loc);
-          }
-          row.appendChild(when);
-          row.appendChild(main);
-          ul.appendChild(row);
-        });
-        el('calCount').textContent = events.length + ' EVENTS';
-      }
-      function setStatus(state, text) {
-        var s = el('calStatus');
-        s.textContent = text;
-        if (state) s.setAttribute('data-state', state);
-        else s.removeAttribute('data-state');
-      }
-      function load() {
-        setStatus('', 'loading…');
-        fetchJSON('/api/calendar/events').then(function (data) {
-          if (data && data.error) {
-            render([]);
-            setStatus('partial', data.error.toUpperCase());
-            return;
-          }
-          var events = (data && (data.events || data.items)) || [];
-          render(events);
-          setStatus(events.length ? 'ok' : '', events.length ? 'CONNECTED' : 'NO DATA');
-        }).catch(function () {
-          render([]);
-          setStatus('partial', 'OFFLINE');
-        });
-      }
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', load);
-      } else {
-        load();
-      }
-    })();
-  </script>
+  <script src="calendar.js" defer></script>
 </body>
 </html>

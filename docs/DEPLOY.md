@@ -17,8 +17,8 @@ repo, install dependencies, run the server, verify it's reachable,
 report back. The goal is that the dashboard serves the same data the
 user has been seeing at
 `http://jarviss-mac-mini.taile919c2.ts.net:8765/`. If anything is
-misconfigured, say so plainly — do not invent a fix that changes the
-shape of the system. Bring up `server.js`; do not redesign it.
+misconfigured, say so plainly — don't invent a fix that changes the
+shape of the system. Bring up `server.js`; don't redesign it.
 
 ---
 
@@ -65,27 +65,19 @@ git clone https://github.com/Ematute3/jarvis-dashboard.git
 If `git pull` reports a dirty tree, stash first, pull, then unstash.
 Do not `git reset --hard`.
 
-### 2. Confirm Node
+### 2. Confirm Node + install dependencies
 
 ```bash
 node --version   # must be v18 or newer
+cd ~/projects/jarvis-dashboard && npm install
 ```
 
-Older versions fail with `fetch is not a function`. Install Node 20
+Older Node fails with `fetch is not a function`; install Node 20
 (`brew install node@20` or `nvm install 20`) rather than patching
-`server.js`.
+`server.js`. `npm install` pulls in `express`, `googleapis`,
+`cookie-parser`, `dotenv`. No dev/prod split.
 
-### 3. Install dependencies
-
-```bash
-cd ~/projects/jarvis-dashboard
-npm install
-```
-
-Pulls in `express`, `googleapis`, `cookie-parser`, `dotenv`. No
-dev/prod split.
-
-### 4. Configure environment
+### 3. Configure environment
 
 Create `.env` at the repo root if missing. Minimum:
 
@@ -111,7 +103,7 @@ Never paste real keys into chat output. `.gitignore` already excludes
 returns a "not configured" error and keys can be filled in later from
 `/settings.html` (see **Configuration**).
 
-### 5. Start the server
+### 4. Start the server
 
 ```bash
 cd ~/projects/jarvis-dashboard
@@ -128,7 +120,7 @@ JARVIS server listening on http://localhost:8765
 For anything that should survive across reboots, see **Persistence
 options**.
 
-### 6. Confirm it's listening
+### 5. Confirm it's listening
 
 ```bash
 lsof -nP -iTCP:8765 -sTCP:LISTEN
@@ -137,7 +129,7 @@ lsof -nP -iTCP:8765 -sTCP:LISTEN
 Expect one `node` row on port `8765`. Empty result → check the log
 (usually `EADDRINUSE` or a missing module).
 
-### 7. Smoke-test the endpoints
+### 6. Smoke-test the endpoints
 
 ```bash
 curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:8765/index.html
@@ -154,7 +146,7 @@ Expected:
 - `/api/chat` → `200 { ok: true, reply, tool_calls: [] }` if the key
   is set; otherwise a plain "not configured" error, not a stack trace.
 
-### 8. Verify Tailscale reachability
+### 7. Verify Tailscale reachability
 
 ```bash
 tailscale ip -4   # the 100.x.x.x magic IP
@@ -270,9 +262,9 @@ Settings page fields:
   this server for everything.
 
 **Environment wins on first start.** If a key exists in `.env` but not
-in `data/config.json`, the server seeds the config file from the
-environment on boot. After that, the Settings page is authoritative —
-later `.env` edits do not overwrite what the user typed in the browser.
+in `data/config.json`, the server seeds the config from the environment.
+Later `.env` changes do not overwrite what the user typed in the browser
+— the Settings page is authoritative after first boot.
 
 For the wire-format of each `/api/*` route, see [SERVER](SERVER.md).
 

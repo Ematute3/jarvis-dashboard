@@ -119,12 +119,15 @@ function buildSystemPrompt() {
 
 // --- Helpers ------------------------------------------------------------
 
-// Atomic write: write to .tmp, then rename. Survives mid-write crashes.
+// Atomic write: write to .tmp with mode 0o600, then rename. Survives
+// mid-write crashes. Mode is set on the tmp file before rename so the
+// final path inherits it — this is critical for tokens.json, where the
+// access + refresh tokens must be owner-readable only.
 function atomicWriteJSON(filePath, data) {
   const dir = path.dirname(filePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const tmp = filePath + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
   fs.renameSync(tmp, filePath);
 }
 
@@ -1066,6 +1069,7 @@ app.get('/mobile.html', (req, res, next) => {
 });
 
 function serveIndex(req, res, next) {
+  res.setHeader('Cache-Control', 'no-cache');
   readAndSend(path.join(ROOT, 'index.html'), res, 'text/html; charset=utf-8', next);
 }
 app.get('/',           serveIndex);
@@ -1080,10 +1084,18 @@ app.get('/apple-touch-icon.png', (req, res, next) => {
 });
 
 // Catch-all static — .css, .js, images, etc. from the dashboard root.
+// Force revalidation for HTML/JS/CSS so the browser never replays a stale
+// script (which would silently break the home widgets when academics.js /
+// extras.js / index.html change shape on disk). Images and other binary
+// assets are left to Express's default caching.
 app.use(express.static(ROOT, {
   setHeaders: (res, filePath) => {
-    const mime = STATIC_MIME[path.extname(filePath).toLowerCase()];
+    const ext  = path.extname(filePath).toLowerCase();
+    const mime = STATIC_MIME[ext];
     if (mime) res.setHeader('Content-Type', mime);
+    if (ext === '.html' || ext === '.js' || ext === '.css') {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
   },
 }));
 

@@ -3,38 +3,221 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JARVIS · Statements</title>
+  <meta name="theme-color" content="#080c16" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="home.css" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="extras.css" />
   <style>
-    .page { max-width: 720px; margin: 0 auto; padding: 28px 16px; }
-    .panel { padding: 24px; }
-    .empty-state { text-align: center; padding: 40px 16px; color: var(--c-ink-dim); }
-    .empty-state h2 { font-family: var(--f-display); font-size: 16px; color: var(--c-cyan); letter-spacing: 0.18em; margin: 0 0 12px; }
-    .empty-state p { margin: 8px 0; line-height: 1.5; }
-    .empty-state code { font-family: var(--f-mono); color: var(--c-orange); background: rgba(255,145,0,0.08); padding: 2px 6px; border-radius: 4px; }
-    .back-link { display: inline-block; margin-top: 16px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.22em; color: var(--c-cyan); text-decoration: none; }
-    .back-link:hover { text-shadow: 0 0 10px var(--c-cyan); }
+    .settings-bar { grid-template-columns: auto 1fr auto; }
+    .page {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      padding: 18px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .empty-state {
+      font-family: var(--f-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      color: var(--c-ink-dim);
+      padding: 28px 16px;
+      text-align: center;
+      border: 1px dashed var(--c-line);
+      border-radius: var(--r-2);
+    }
+    .stm-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stm-tile {
+      padding: 14px 16px;
+      border: 1px solid var(--c-line);
+      border-radius: var(--r-2);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stm-tile h3 {
+      margin: 0;
+      font-family: var(--f-display);
+      font-size: 10px;
+      letter-spacing: 0.25em;
+      color: var(--c-cyan);
+    }
+    .stm-tile .big {
+      font-family: var(--f-mono);
+      font-size: 22px;
+      color: var(--c-ink);
+      letter-spacing: 0.04em;
+    }
+    .stm-tile.neg .big { color: var(--c-orange); }
+    .stm-tile.pos .big { color: var(--c-cyan); }
+    .stm-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .stm-row {
+      display: grid;
+      grid-template-columns: 110px 1fr 90px 90px;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--c-line-soft);
+      border-radius: var(--r-2);
+      background: rgba(0, 0, 0, 0.25);
+      font-family: var(--f-mono);
+      font-size: 12px;
+    }
+    .stm-row .date { color: var(--c-ink-faint); }
+    .stm-row .desc { color: var(--c-ink); }
+    .stm-row .cat { color: var(--c-ink-dim); text-transform: uppercase; font-size: 10px; letter-spacing: 0.12em; }
+    .stm-row .amt { text-align: right; }
+    .stm-row .amt.neg { color: var(--c-orange); }
+    .stm-row .amt.pos { color: var(--c-cyan); }
   </style>
+  <title>JARVIS · Statements</title>
 </head>
-<body>
-  <main class="page">
-    <section class="panel">
-      <header style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-        <a href="index.html" class="back-link" style="margin-top:0;">← DASHBOARD</a>
-        <span style="font-family:var(--f-mono);font-size:10px;letter-spacing:0.32em;color:var(--c-ink-faint);">STATEMENTS</span>
-      </header>
+<body class="page-shell">
 
-      <div class="empty-state">
-        <h2>CSV INGEST · MONEY MODULE</h2>
-        <p>The legacy JARVIS dashboard has a full statements module — drag-and-drop CSV ingestion, paste-CSV parser, parsed-transaction view, debit/credit/net summary.</p>
-        <p>This local copy is a stub for now. To use the full feature, open the live page:</p>
-        <p><a href="http://jarviss-mac-mini.taile919c2.ts.net:8765/statements.html" target="_blank" rel="noopener noreferrer" style="color:var(--c-cyan);">http://jarviss-mac-mini.taile919c2.ts.net:8765/statements.html ↗</a></p>
-        <p>Or, to wire it up locally, port <code>statements.css</code> + <code>statements.js</code> from the legacy backend into this repo and add a CSV-ingest endpoint to <code>server.js</code>.</p>
+  <header class="topbar settings-bar" role="banner">
+    <a class="topbar-back" href="index.html" title="Back to dashboard">← DASHBOARD</a>
+    <div class="topbar-title">STATEMENTS</div>
+    <div class="topbar-meta" id="stmStatus">checking…</div>
+  </header>
+
+  <main class="page" role="main">
+    <section class="panel" aria-label="Statements">
+      <div class="panel-header">
+        <h2 class="panel-title">RECENT · CSV INGEST</h2>
+        <span class="panel-tag" id="stmCount">0 ROWS</span>
       </div>
+      <div class="stm-grid" id="stmSummary" hidden>
+        <article class="stm-tile neg">
+          <h3>DEBIT</h3>
+          <span class="big" id="stmDebit">$0.00</span>
+        </article>
+        <article class="stm-tile pos">
+          <h3>CREDIT</h3>
+          <span class="big" id="stmCredit">$0.00</span>
+        </article>
+        <article class="stm-tile">
+          <h3>NET</h3>
+          <span class="big" id="stmNet">$0.00</span>
+        </article>
+      </div>
+      <ul class="stm-list" id="stmList">
+        <li class="empty-state">No statements yet.</li>
+      </ul>
     </section>
   </main>
+
+  <script>
+    (function () {
+      'use strict';
+      function el(id) { return document.getElementById(id); }
+      function fetchJSON(url) {
+        return fetch(url).then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        });
+      }
+      function formatUSD(n, decimals) {
+        if (decimals == null) decimals = 2;
+        if (!isFinite(n)) return '$0.00';
+        var abs = Math.abs(n);
+        var sign = n < 0 ? '-' : '';
+        return sign + '$' + abs.toLocaleString('en-US', {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        });
+      }
+      function render(rows) {
+        var ul = el('stmList');
+        ul.replaceChildren();
+        if (!Array.isArray(rows) || !rows.length) {
+          var li = document.createElement('li');
+          li.className = 'empty-state';
+          li.textContent = 'No statements yet.';
+          ul.appendChild(li);
+          el('stmCount').textContent = '0 ROWS';
+          el('stmSummary').hidden = true;
+          return;
+        }
+        var credit = 0, debit = 0;
+        rows.forEach(function (r) {
+          var amt = (typeof r.amount === 'number') ? r.amount : 0;
+          if (amt > 0) credit += amt; else debit += Math.abs(amt);
+          var row = document.createElement('li');
+          row.className = 'stm-row';
+          var date = document.createElement('span');
+          date.className = 'date';
+          date.textContent = r.date || '';
+          var desc = document.createElement('span');
+          desc.className = 'desc';
+          desc.textContent = r.description || r.desc || '';
+          var cat = document.createElement('span');
+          cat.className = 'cat';
+          cat.textContent = r.category || '';
+          var amtEl = document.createElement('span');
+          amtEl.className = 'amt ' + (amt >= 0 ? 'pos' : 'neg');
+          amtEl.textContent = formatUSD(amt);
+          row.appendChild(date);
+          row.appendChild(desc);
+          row.appendChild(cat);
+          row.appendChild(amtEl);
+          ul.appendChild(row);
+        });
+        el('stmCount').textContent = rows.length + ' ROWS';
+        el('stmDebit').textContent = formatUSD(-debit);
+        el('stmCredit').textContent = formatUSD(credit);
+        el('stmNet').textContent = formatUSD(credit - debit);
+        el('stmSummary').hidden = false;
+      }
+      function setStatus(state, text) {
+        var s = el('stmStatus');
+        s.textContent = text;
+        if (state) s.setAttribute('data-state', state);
+        else s.removeAttribute('data-state');
+      }
+      function load() {
+        setStatus('', 'loading…');
+        fetchJSON('/api/statements').then(function (data) {
+          if (data && data.error) {
+            render([]);
+            setStatus('partial', data.error.toUpperCase());
+            return;
+          }
+          var rows = (data && (data.statements || data.rows || data.transactions || data.items)) || [];
+          render(rows);
+          setStatus(rows.length ? 'ok' : '', rows.length ? 'CONNECTED' : 'NO DATA');
+        }).catch(function () {
+          render([]);
+          setStatus('partial', 'OFFLINE');
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', load);
+      } else {
+        load();
+      }
+    })();
+  </script>
 </body>
 </html>

@@ -19,10 +19,14 @@
        /api/canvas/courses/:id/assignments hit the real Canvas
        instance at canvasBaseUrl. When unset, the endpoints
        return their empty-state shape.
-     - Legacy JARVIS proxy: when jarvisApiBase is set,
-       un-implemented endpoints (news, plan, holdings, prices,
-       portfolio/history) are proxied upstream; otherwise they
-       fall through to the local honest-empty stubs.
+     - Legacy JARVIS proxy: when jarvisApiBase is set, a single
+       wildcard middleware on /api/* forwards any request not
+       implemented authoritatively here (config, chat, calendar/
+       events/new, gmail/mark-read, gmail/messages, goals/*,
+       oauth/*) upstream to the legacy backend. Per-endpoint
+       proxyToJarvis() calls remain as a defensive fallback for
+       when jarvisApiBase is empty. When unset, every endpoint
+       falls through to its local stub.
      - Custom system prompt: config.get('systemPrompt') is
        prepended to the built-in DEFAULT_SYSTEM_PROMPT on every
        /api/chat call. Empty string = use the built-in default.
@@ -320,6 +324,49 @@ app.use((req, res, next) => {
   next();
 });
 
+// --- Legacy JARVIS wildcard proxy --------------------------------------
+// When jarvisApiBase is configured, forward every /api/* request to the
+// legacy JARVIS backend and stream its response back. A short allow-list
+// of "do NOT proxy" paths is checked first — these are the endpoints
+// this server implements authoritatively (local config, MiniMax chat,
+// Google Calendar/Gmail write actions, file-backed goals, the OAuth
+// flow itself). When jarvisApiBase is empty, the middleware falls
+// through to the per-endpoint handlers (which themselves call
+// proxyToJarvis() as a defensive no-op).
+//
+// The legacy backend does not require a bearer token by default, so
+// jarvisApiKey is usually empty. If it is set, send it as
+// Authorization: Bearer <key>. The full req.originalUrl is forwarded
+// (including query string) so e.g. /api/canvas/courses/234111/
+// assignments?per_page=50 reaches the upstream intact.
+app.use('/api', async (req, res, next) => {
+  const base = config.get('jarvisApiBase');
+  if (!base) return next(); // fall through to local handler
+  // Don't proxy endpoints this server implements authoritatively.
+  if (req.path === '/config' && (req.method === 'GET' || req.method === 'PUT')) return next();
+  if (req.path === '/chat') return next();
+  if (req.path.startsWith('/calendar/events/new')) return next();
+  if (req.path.startsWith('/gmail/mark-read')) return next();
+  if (req.path.startsWith('/gmail/messages') && req.method === 'GET') return next();
+  if (req.path.startsWith('/goals')) return next(); // file-backed, local
+  if (req.path.startsWith('/oauth/')) return next();
+  // Everything else: proxy.
+  try {
+    const url = base + req.originalUrl;
+    const headers = { 'Accept': 'application/json' };
+    const k = config.get('jarvisApiKey');
+    if (k) headers.Authorization = 'Bearer ' + k;
+    const upstream = await fetch(url, { method: req.method, headers });
+    res.status(upstream.status);
+    const ct = upstream.headers.get('content-type');
+    if (ct) res.setHeader('content-type', ct);
+    const body = await upstream.text();
+    res.send(body);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: 'Legacy JARVIS unreachable at ' + base + '.' });
+  }
+});
+
 // --- OAuth --------------------------------------------------------------
 
 app.get('/oauth/start', (req, res) => {
@@ -377,9 +424,13 @@ app.get('/oauth/status', (req, res) => {
 // base URL is configured. If yes, the upstream response is streamed
 // back. If no, the local honest-empty stub runs.
 
-app.get('/api/schedule', (req, res) => res.json([]));
+app.get('/api/schedule', async (req, res) => {
+  if (await proxyToJarvis(req, res)) return;
+  res.json([]);
+});
 
 app.get('/api/courses/all', async (req, res) => {
+  if (await proxyToJarvis(req, res)) return;
   const r = await canvasFetch('/api/v1/courses?per_page=50');
   if (!r.ok) return res.json({ error: r.error });
   const list = Array.isArray(r.data) ? r.data : [];
@@ -394,31 +445,27 @@ app.get('/api/courses/all', async (req, res) => {
 });
 
 app.get('/api/plan', async (req, res) => {
-  if (await proxyToJarvis(req, res)) return;
   res.json({ error: 'No classes to plan from yet.' });
 });
 
 app.get('/api/news', async (req, res) => {
-  if (await proxyToJarvis(req, res)) return;
   res.json({});
 });
 
 app.get('/api/holdings', async (req, res) => {
-  if (await proxyToJarvis(req, res)) return;
   res.json([]);
 });
 
 app.get('/api/prices', async (req, res) => {
-  if (await proxyToJarvis(req, res)) return;
   res.json({ quotes: [], fetched_at: null });
 });
 
 app.get('/api/portfolio/history', async (req, res) => {
-  if (await proxyToJarvis(req, res)) return;
   res.json([]);
 });
 
 app.get('/api/canvas/courses/:id/assignments', async (req, res) => {
+  if (await proxyToJarvis(req, res)) return;
   const id = encodeURIComponent(req.params.id);
   const r = await canvasFetch(`/api/v1/courses/${id}/assignments?per_page=50`);
   if (!r.ok) return res.json({ error: r.error });
@@ -532,6 +579,7 @@ app.delete('/api/goals/:id', (req, res) => {
 // --- Calendar API -------------------------------------------------------
 
 app.get('/api/calendar/events', async (req, res) => {
+  if (await proxyToJarvis(req, res)) return;
   const auth = authedClientOrNull();
   if (!auth) return res.json({ error: 'Google Calendar not connected.' });
   try {

@@ -59,6 +59,9 @@
         <span class="icon-glyph">◈</span>
         <span class="badge" id="notifBadge" hidden>0</span>
       </button>
+      <button class="icon-btn c-chat" id="chatToggle" title="Open JARVIS chat" aria-label="Open JARVIS chat" aria-haspopup="dialog" aria-expanded="false" aria-controls="chatPanel">
+        <span class="icon-glyph">✦</span>
+      </button>
     </div>
   </header>
 
@@ -253,6 +256,25 @@
     <a class="notif-all" href="assignments.html" style="display:block;padding:12px 16px;text-align:center;font-family:var(--f-mono);font-size:11px;letter-spacing:.18em;color:var(--c-cyan);text-decoration:none">SEE ALL ASSIGNMENTS &rarr;</a>
   </div>
 
+  <!-- JARVIS chat panel (toggled by the ✦ icon in the top bar) -->
+  <div id="chatPanel" class="chat-panel" hidden aria-label="JARVIS chat assistant">
+    <div id="chatHead" class="chat-head">
+      <span id="chatTitle">JARVIS</span>
+      <div>
+        <button id="chatClear" type="button" title="Clear chat history">CLEAR</button>
+        <button id="chatClose" type="button" aria-label="Close chat">&times;</button>
+      </div>
+    </div>
+    <div id="chatMessages" class="chat-messages">
+      <div class="chat-empty">Ask JARVIS to check your courses, summarize emails, or add a calendar event.</div>
+    </div>
+    <form id="chatForm" class="chat-form" autocomplete="off">
+      <input id="chatInput" type="text" class="chat-input" name="chat" placeholder="Ask JARVIS&hellip;" aria-label="Message" maxlength="2000" autocomplete="off" />
+      <button id="chatSend" type="submit" class="chat-send" aria-label="Send message">&rarr;</button>
+      <div id="chatStatus" class="chat-status" data-state="idle"><span></span><span></span></div>
+    </form>
+  </div>
+
   <script src="portfolio-shared.js"></script>
   <script src="app.js"></script>
   <script src="academics.js"></script>
@@ -292,5 +314,6 @@
     })();
   </script>
   <script src="native-launcher.js" defer></script>
+  <script src="chatbot.js" defer></script>
 </body>
 </html>

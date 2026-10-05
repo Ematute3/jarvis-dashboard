@@ -575,43 +575,64 @@
 
   // ---------- Boot ----------
   async function boot() {
-    paintHeader();
-    var loaded = await loadAggregated();
-    state.events = loaded.events;
-    state.error = loaded.error;
+    try {
+      paintHeader();
+      var loaded = await loadAggregated();
+      state.events = loaded.events;
+      state.error = loaded.error;
 
-    var statusEl = $('#calSourceStatus');
-    if (statusEl) statusEl.textContent = loaded.error ? 'OFFLINE' : 'AGGREGATED';
-    var noticeEl = $('#calNotice');
-    if (noticeEl) {
-      noticeEl.textContent = loaded.error || '';
-      noticeEl.hidden = !loaded.error;
+      var statusEl = $('#calSourceStatus');
+      if (statusEl) statusEl.textContent = loaded.error ? 'OFFLINE' : 'AGGREGATED';
+      var noticeEl = $('#calNotice');
+      if (noticeEl) {
+        noticeEl.textContent = loaded.error || '';
+        noticeEl.hidden = !loaded.error;
+      }
+
+      // Read-only export for other modules (chat, rescheduler, study planner).
+      window.__JARVIS_CALENDAR__ = {
+        events: state.events,
+        today:  todayISO(),
+        now:    NOW.toISOString(),
+        source: loaded.error ? 'unavailable' : 'aggregated',
+      };
+
+      renderDayView(state.events, NOW);
+      renderWeekView(state.events, state.weekAnchor);
+      renderMonthView(state.events, state.monthAnchor);
+    } catch (err) {
+      // Render whatever state we have so the user sees the tabs even when
+      // data loading fails; surface the error so it isn't silently dropped.
+      try {
+        renderDayView(state.events || [], NOW);
+        renderWeekView(state.events || [], state.weekAnchor);
+        renderMonthView(state.events || [], state.monthAnchor);
+      } catch (_) { /* swallow render error */ }
+      var noticeEl2 = $('#calNotice');
+      if (noticeEl2) {
+        noticeEl2.textContent = 'Calendar failed to load: ' + (err && err.message ? err.message : String(err));
+        noticeEl2.hidden = false;
+      }
+      console.error('[calendar] boot failed', err);
     }
+  }
 
-    // Read-only export for other modules (chat, rescheduler, study planner).
-    window.__JARVIS_CALENDAR__ = {
-      events: state.events,
-      today:  todayISO(),
-      now:    NOW.toISOString(),
-      source: loaded.error ? 'unavailable' : 'aggregated',
-    };
-
-    renderDayView(state.events, NOW);
-    renderWeekView(state.events, state.weekAnchor);
-    renderMonthView(state.events, state.monthAnchor);
+  // Bind UI synchronously so tabs, nav, modals are live before data
+  // arrives. Anything that needs data is re-rendered from boot().
+  function bindAll() {
     bindTabs();
     bindNav();
+    bindNewEventForm();
+    bindDayDetail();
   }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
-      bindNewEventForm();
-      bindDayDetail();
+      bindAll();
       boot();
     });
   } else {
-    bindNewEventForm();
-    bindDayDetail();
+    bindAll();
     boot();
   }
 })();

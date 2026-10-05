@@ -356,6 +356,9 @@ app.use('/api', async (req, res, next) => {
   if (req.path.startsWith('/gmail/messages') && req.method === 'GET') return next();
   if (req.path.startsWith('/goals')) return next(); // file-backed, local
   if (req.path.startsWith('/oauth/')) return next();
+  if (req.path.startsWith('/canvas/courses/') && req.path.endsWith('/files')) return next();
+  if (req.path.startsWith('/canvas/files/')) return next();
+  if (req.path.startsWith('/study/')) return next();
   // Everything else: proxy.
   try {
     const url = base + req.originalUrl;
@@ -492,6 +495,395 @@ app.get('/api/canvas/courses/:id/assignments', async (req, res) => {
     };
   });
   res.json(assignments);
+});
+
+// --- Study Assistant ----------------------------------------------------
+// Pulls Canvas files for a course, extracts text from PDF/DOCX/PPTX, and
+// asks MiniMax to produce study guides, essay drafts, and practice quizzes.
+// Outputs are saved to ~/Downloads/canvas/study-outputs/<course>/ as .md so
+// the user can copy them locally. We never POST to Canvas.
+
+const os = require('os');
+const { spawn } = require('child_process');
+
+async function extractPdf(filePath) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('pdftotext', [filePath, '-']);
+    const chunks = [];
+    proc.stdout.on('data', (c) => chunks.push(c));
+    proc.on('error', reject);
+    proc.on('close', (code) =>
+      code === 0
+        ? resolve(Buffer.concat(chunks).toString())
+        : reject(new Error('pdftotext exited ' + code))
+    );
+  });
+}
+
+function extractDocxScript() {
+  return `import zipfile, re, sys
+with zipfile.ZipFile(sys.argv[1]) as z:
+    with z.open('word/document.xml') as f:
+        xml = f.read().decode('utf-8')
+text = re.sub(r'</w:p>', '\n\n', xml)
+text = re.sub(r'<w:tab/>', '\t', text)
+text = re.sub(r'<[^>]+>', '', text)
+text = re.sub(r'\\n{3,}', '\n\n', text)
+print(text)`;
+}
+
+function extractPptxScript() {
+  return `import zipfile, re, sys
+with zipfile.ZipFile(sys.argv[1]) as z:
+    slides = sorted([n for n in z.namelist() if re.match(r'ppt/slides/slide\\d+\\.xml$', n)],
+                    key=lambda s: int(re.search(r'slide(\\d+)', s).group(1)))
+    out = []
+    for slide in slides:
+        with z.open(slide) as f:
+            xml = f.read().decode('utf-8')
+        texts = re.findall(r'<a:t[^>]*>([^<]*)</a:t>', xml)
+        out.append(f'=== {slide} ===\n' + '\n'.join(texts) + '\n')
+    print('\n'.join(out))`;
+}
+
+async function extractOffice(filePath, kind) {
+  const script = kind === 'docx' ? extractDocxScript() : extractPptxScript();
+  return new Promise((resolve, reject) => {
+    const proc = spawn('python3', ['-c', script, filePath]);
+    const chunks = [];
+    proc.stdout.on('data', (c) => chunks.push(c));
+    proc.on('error', reject);
+    proc.on('close', (code) =>
+      code === 0
+        ? resolve(Buffer.concat(chunks).toString())
+        : reject(new Error('python extraction exited ' + code))
+    );
+  });
+}
+
+async function extractText(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.pdf') return extractPdf(filePath);
+  if (ext === '.docx') return extractOffice(filePath, 'docx');
+  if (ext === '.pptx') return extractOffice(filePath, 'pptx');
+  if (['.txt', '.md', '.csv', '.html'].includes(ext)) {
+    return fs.readFileSync(filePath, 'utf8');
+  }
+  return extractPdf(filePath);
+}
+
+function safeFilename(s) {
+  return (s || 'untitled').replace(/[^a-z0-9._-]+/gi, '-').slice(0, 60);
+}
+
+async function gatherCourseText(courseId, courseCode, maxFiles) {
+  const list = await canvasFetch(
+    `/api/v1/courses/${encodeURIComponent(courseId)}/files?per_page=100`
+  );
+  if (!list.ok) return { ok: false, error: list.error, files: [] };
+  const files = Array.isArray(list.data) ? list.data : [];
+  const usable = files.filter((f) =>
+    /\.(pdf|docx|pptx|txt|md|csv)$/i.test(f.filename || f.display_name || '')
+  );
+  const selected = usable.slice(0, maxFiles || 12);
+  const out = [];
+  const folder = path.join(os.homedir(), 'Downloads', 'canvas',
+    safeFilename(courseCode || String(courseId)));
+  fs.mkdirSync(folder, { recursive: true });
+
+  for (const f of selected) {
+    try {
+      const meta = await canvasFetch(
+        `/api/v1/files/${encodeURIComponent(f.id)}`
+      );
+      if (!meta.ok || !meta.data || !meta.data.url) continue;
+      const dest = path.join(folder, f.display_name || f.filename);
+      const dl = await fetch(meta.data.url);
+      if (!dl.ok) continue;
+      const buf = Buffer.from(await dl.arrayBuffer());
+      fs.writeFileSync(dest, buf);
+      const text = await extractText(dest);
+      out.push({
+        id: f.id,
+        name: f.display_name || f.filename,
+        size: f.size,
+        text: text.slice(0, 8000),
+        truncated: text.length > 8000,
+      });
+    } catch (_) { /* skip this file */ }
+  }
+  return { ok: true, files: out, courseFolder: folder };
+}
+
+// GET /api/canvas/courses/:id/files — list every file Canvas exposes for a course.
+app.get('/api/canvas/courses/:id/files', async (req, res) => {
+  const r = await canvasFetch(
+    `/api/v1/courses/${encodeURIComponent(req.params.id)}/files?per_page=100`
+  );
+  if (!r.ok) return res.status(502).json({ error: r.error });
+  const list = Array.isArray(r.data) ? r.data : [];
+  res.json({
+    files: list.map((f) => ({
+      id: f.id,
+      displayName: f.display_name,
+      filename: f.filename,
+      size: f.size,
+      contentType: f.content_type,
+      updatedAt: f.updated_at,
+    })),
+  });
+});
+
+// GET /api/canvas/files/:id — metadata + signed download URL.
+app.get('/api/canvas/files/:id', async (req, res) => {
+  const r = await canvasFetch(
+    `/api/v1/files/${encodeURIComponent(req.params.id)}`
+  );
+  if (!r.ok) return res.status(502).json({ error: r.error });
+  res.json(r.data);
+});
+
+// POST /api/canvas/files/:id/download — download to local disk.
+// body: { dest?: absolute path, courseCode?: string }
+app.post('/api/canvas/files/:id/download', async (req, res) => {
+  const fileId = req.params.id;
+  try {
+    const meta = await canvasFetch(
+      `/api/v1/files/${encodeURIComponent(fileId)}`
+    );
+    if (!meta.ok) return res.status(502).json({ ok: false, error: meta.error });
+    const file = meta.data;
+    if (!file.url) {
+      return res.status(400).json({ ok: false, error: 'Canvas returned no download URL.' });
+    }
+    let dest = (req.body && req.body.dest) || null;
+    if (!dest) {
+      const code = (req.body && req.body.courseCode) || '';
+      const folder = code
+        ? path.join(os.homedir(), 'Downloads', 'canvas', safeFilename(code))
+        : path.join(os.homedir(), 'Downloads', 'canvas');
+      fs.mkdirSync(folder, { recursive: true });
+      dest = path.join(folder, file.display_name || file.filename || `${fileId}.bin`);
+    } else {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+    }
+    const dl = await fetch(file.url);
+    if (!dl.ok) {
+      return res.status(502).json({ ok: false, error: `Canvas download failed: HTTP ${dl.status}` });
+    }
+    const buf = Buffer.from(await dl.arrayBuffer());
+    fs.writeFileSync(dest, buf);
+    res.json({
+      ok: true,
+      path: dest,
+      size: buf.length,
+      displayName: file.display_name,
+      contentType: file.content_type,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: (err && err.message) || String(err) });
+  }
+});
+
+// POST /api/study/extract — extract text from a local file (PDF/DOCX/PPTX/TXT).
+app.post('/api/study/extract', async (req, res) => {
+  const filePath = req.body && req.body.path;
+  if (!filePath || !fs.existsSync(filePath)) {
+    return res.status(400).json({ ok: false, error: 'File path does not exist.' });
+  }
+  try {
+    const text = await extractText(filePath);
+    res.json({
+      ok: true,
+      text,
+      fullLength: text.length,
+      truncated: text.length > 50000,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: (err && err.message) || String(err) });
+  }
+});
+
+// POST /api/study/guide — pull course files → MiniMax → markdown study guide.
+app.post('/api/study/guide', async (req, res) => {
+  const { courseId, courseCode, courseName, topic, maxFiles } = req.body || {};
+  if (!courseId) return res.status(400).json({ ok: false, error: 'courseId required.' });
+  const gathered = await gatherCourseText(courseId, courseCode, maxFiles || 12);
+  if (!gathered.ok) return res.status(502).json(gathered);
+  if (!gathered.files.length) {
+    return res.status(400).json({
+      ok: false,
+      error: 'No usable files (PDF/PPTX/DOCX/TXT) found in this course yet.',
+    });
+  }
+  const context = gathered.files
+    .map((f) => `=== ${f.name} (${f.size} bytes${f.truncated ? ', truncated' : ''}) ===\n${f.text}`)
+    .join('\n\n');
+  const systemPrompt =
+    (typeof buildSystemPrompt === 'function' ? buildSystemPrompt() : '') +
+    `\n\nYou are the user's STUDY ASSISTANT. The user will use your output only for personal study and self-review, never as a submission. Be candid: produce the strongest study guide you can from the supplied materials, with definitions, key concepts, common pitfalls, likely question formats, and short self-test items.`;
+  const userPrompt =
+    `Course: ${courseName || courseCode || courseId}\n` +
+    `Topic: ${topic || 'general exam preparation'}\n\n` +
+    `Course materials (${gathered.files.length} files, downloaded to ${gathered.courseFolder}):\n\n` +
+    context +
+    `\n\n---\n\n` +
+    `Build a thorough study guide for "${topic || 'this course'}". Include:\n` +
+    `1. Topic outline — major themes likely to appear\n` +
+    `2. Key definitions — most important terms with concise explanations\n` +
+    `3. Likely question formats — multiple-choice, short-answer, problem-solving, essay; 5 sample items each\n` +
+    `4. Common pitfalls — mistakes students typically make\n` +
+    `5. Self-test — 5 questions with answer key at the end\n\n` +
+    `Write in Markdown.`;
+  const r = await callMinimax([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ]);
+  if (!r || !r.content) {
+    return res.status(502).json({ ok: false, error: (r && r.error) || 'LLM returned no content.' });
+  }
+  const date = new Date().toISOString().slice(0, 10);
+  const folder = path.join(os.homedir(), 'Downloads', 'canvas', 'study-outputs',
+    safeFilename(courseCode || courseName || courseId));
+  fs.mkdirSync(folder, { recursive: true });
+  const file = path.join(folder, `guide-${safeFilename(topic || 'general')}-${date}.md`);
+  fs.writeFileSync(file, r.content);
+  res.json({
+    ok: true,
+    content: r.content,
+    savedTo: file,
+    filesUsed: gathered.files.map((f) => ({
+      name: f.name, size: f.size, truncated: f.truncated,
+    })),
+  });
+});
+
+// POST /api/study/draft — essay drafter. Uses course materials + prompt.
+app.post('/api/study/draft', async (req, res) => {
+  const { courseId, courseCode, courseName, prompt } = req.body || {};
+  if (!courseId) return res.status(400).json({ ok: false, error: 'courseId required.' });
+  if (!prompt) return res.status(400).json({ ok: false, error: 'prompt required.' });
+  const gathered = await gatherCourseText(courseId, courseCode, 12);
+  if (!gathered.ok) return res.status(502).json(gathered);
+  if (!gathered.files.length) {
+    return res.status(400).json({
+      ok: false,
+      error: 'No usable files (PDF/PPTX/DOCX/TXT) found in this course yet.',
+    });
+  }
+  const context = gathered.files
+    .map((f) => `=== ${f.name} ===\n${f.text}`)
+    .join('\n\n');
+  const systemPrompt =
+    (typeof buildSystemPrompt === 'function' ? buildSystemPrompt() : '') +
+    `\n\nYou are the user's DRAFTING assistant. The user will rewrite in their own voice before any submission — you are a research + outline + reference. Be candid: produce the strongest draft you can, citing the relevant materials.`;
+  const userPrompt =
+    `Course: ${courseName || courseCode || courseId}\n` +
+    `User's instruction: ${prompt}\n\n` +
+    `Course materials (${gathered.files.length} files):\n\n` +
+    context +
+    `\n\n---\n\n` +
+    `Draft a written response per the user's instruction. Aim for ~1,000 words unless they specified otherwise. ` +
+    `Cite each fact with [filename — section/heading] so the user can verify. Markdown formatting.`;
+  const r = await callMinimax([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ]);
+  if (!r || !r.content) {
+    return res.status(502).json({ ok: false, error: (r && r.error) || 'LLM returned no content.' });
+  }
+  const folder = path.join(os.homedir(), 'Downloads', 'canvas', 'study-outputs',
+    safeFilename(courseCode || courseName || courseId));
+  fs.mkdirSync(folder, { recursive: true });
+  const stamp = Date.now().toString(36);
+  const file = path.join(folder, `draft-${stamp}.md`);
+  fs.writeFileSync(file, r.content);
+  res.json({
+    ok: true,
+    content: r.content,
+    savedTo: file,
+    filesUsed: gathered.files.map((f) => ({
+      name: f.name, size: f.size, truncated: f.truncated,
+    })),
+  });
+});
+
+// POST /api/study/quiz — generate a self-test quiz from course materials.
+app.post('/api/study/quiz', async (req, res) => {
+  const { courseId, courseCode, courseName, topic, count } = req.body || {};
+  if (!courseId) return res.status(400).json({ ok: false, error: 'courseId required.' });
+  const gathered = await gatherCourseText(courseId, courseCode, 12);
+  if (!gathered.ok) return res.status(502).json(gathered);
+  if (!gathered.files.length) {
+    return res.status(400).json({
+      ok: false,
+      error: 'No usable files (PDF/PPTX/DOCX/TXT) found in this course yet.',
+    });
+  }
+  const context = gathered.files
+    .map((f) => `=== ${f.name} ===\n${f.text}`)
+    .join('\n\n');
+  const systemPrompt =
+    (typeof buildSystemPrompt === 'function' ? buildSystemPrompt() : '') +
+    `\n\nYou are the user's QUIZ generator. The output is for self-study only — never submitted.`;
+  const userPrompt =
+    `Course: ${courseName || courseCode || courseId}\n` +
+    `Topic: ${topic || 'general'}\n` +
+    `Question count: ${count || 10}\n\n` +
+    `Materials (${gathered.files.length} files):\n\n` +
+    context +
+    `\n\n---\n\n` +
+    `Generate a self-test quiz. Mix formats: ~60% multiple-choice (4 options A–D, one correct), ` +
+    `~30% short-answer, ~10% short essay. Include an ANSWER KEY at the end, clearly labeled. ` +
+    `Cite the material each question uses. Markdown.`;
+  const r = await callMinimax([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt },
+  ]);
+  if (!r || !r.content) {
+    return res.status(502).json({ ok: false, error: (r && r.error) || 'LLM returned no content.' });
+  }
+  const date = new Date().toISOString().slice(0, 10);
+  const folder = path.join(os.homedir(), 'Downloads', 'canvas', 'study-outputs',
+    safeFilename(courseCode || courseName || courseId));
+  fs.mkdirSync(folder, { recursive: true });
+  const file = path.join(folder, `quiz-${safeFilename(topic || 'general')}-${date}.md`);
+  fs.writeFileSync(file, r.content);
+  res.json({
+    ok: true,
+    content: r.content,
+    savedTo: file,
+    filesUsed: gathered.files.map((f) => ({
+      name: f.name, size: f.size, truncated: f.truncated,
+    })),
+  });
+});
+
+// GET /api/study/outputs — list previously saved outputs.
+app.get('/api/study/outputs', (req, res) => {
+  const root = path.join(os.homedir(), 'Downloads', 'canvas', 'study-outputs');
+  if (!fs.existsSync(root)) return res.json({ files: [] });
+  const out = [];
+  function walk(dir, courseLabel) {
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      const stat = fs.statSync(p);
+      if (stat.isDirectory()) {
+        walk(p, courseLabel ? `${courseLabel}/${name}` : name);
+      } else if (/\.(md|txt)$/i.test(name)) {
+        out.push({
+          course: courseLabel || '',
+          name,
+          path: p,
+          size: stat.size,
+          mtime: stat.mtimeMs,
+        });
+      }
+    }
+  }
+  try { walk(root, ''); } catch (_) { /* ignore */ }
+  out.sort((a, b) => b.mtime - a.mtime);
+  res.json({ files: out });
 });
 
 // --- Config API ---------------------------------------------------------

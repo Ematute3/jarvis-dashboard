@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080c16" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <title>JARVIS · Study Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="study.css" />
+</head>
+<body class="page-shell">
+
+  <header class="cal-topbar" role="banner">
+    <a class="cal-back" href="index.html" title="Back to dashboard">&larr; DASHBOARD</a>
+    <div class="cal-title-block">
+      <h1 class="cal-title">STUDY ASSISTANT</h1>
+      <div class="cal-sub" id="studySub">Loading courses&hellip;</div>
+    </div>
+    <div class="cal-topbar-right">
+      <span class="cal-status" id="studyStatus">checking&hellip;</span>
+      <a class="cal-refresh" href="settings.html" title="Manage Canvas token scopes">SETTINGS</a>
+    </div>
+  </header>
+
+  <main class="study-page" role="main">
+
+    <!-- ===== Mode picker ===== -->
+    <section class="study-modes panel" aria-label="Mode">
+      <button class="study-mode-btn is-active" data-mode="guide"   type="button">
+        <span class="study-mode-glyph">📚</span>
+        <span class="study-mode-label">STUDY GUIDE</span>
+        <span class="study-mode-sub">Pull every Canvas file → build a topic-by-topic guide + self-test.</span>
+      </button>
+      <button class="study-mode-btn"           data-mode="draft"   type="button">
+        <span class="study-mode-glyph">📝</span>
+        <span class="study-mode-label">ESSAY DRAFTER</span>
+        <span class="study-mode-sub">Tell me what to write; I'll pull the course materials and draft it.</span>
+      </button>
+      <button class="study-mode-btn"           data-mode="quiz"    type="button">
+        <span class="study-mode-glyph">✅</span>
+        <span class="study-mode-label">QUIZ</span>
+        <span class="study-mode-sub">Self-test with answer key. Multiple choice + short answer + essay.</span>
+      </button>
+    </section>
+
+    <!-- ===== Inputs ===== -->
+    <section class="study-inputs panel" aria-label="Inputs">
+
+      <label class="study-field">
+        <span class="study-label">COURSE</span>
+        <select id="studyCourse" class="study-select"></select>
+      </label>
+
+      <label class="study-field" id="studyTopicField">
+        <span class="study-label">TOPIC</span>
+        <input id="studyTopic" class="study-input" type="text"
+          placeholder="Midterm 1, Final Exam, Week 3 Quiz, …" />
+      </label>
+
+      <label class="study-field" id="studyPromptField" hidden>
+        <span class="study-label">YOUR PROMPT</span>
+        <textarea id="studyPrompt" class="study-input study-textarea" rows="4"
+          placeholder="What do you want me to draft? (e.g. 'Write a 1,000-word response arguing that Raskolnikov's theory of the extraordinary man is a rationalization, not a philosophy.'"></textarea>
+      </label>
+
+      <label class="study-field study-field-narrow" id="studyCountField" hidden>
+        <span class="study-label">QUESTION COUNT</span>
+        <input id="studyCount" class="study-input" type="number" min="3" max="40" value="10" />
+      </label>
+
+      <div class="study-actions">
+        <button id="studyRun"     class="btn-primary" type="button">GENERATE</button>
+        <button id="studyRefresh" class="btn-ghost"   type="button">REFRESH FILES</button>
+      </div>
+    </section>
+
+    <!-- ===== Status / Errors ===== -->
+    <div class="study-notice" id="studyNotice" role="alert" hidden></div>
+
+    <!-- ===== Files used + output location ===== -->
+    <section class="study-meta panel" id="studyMeta" hidden aria-label="Result metadata">
+      <div class="study-meta-row">
+        <span class="study-meta-label">FILES USED</span>
+        <span class="study-meta-value" id="studyFilesUsed">&mdash;</span>
+      </div>
+      <div class="study-meta-row">
+        <span class="study-meta-label">SAVED TO</span>
+        <a class="study-meta-value" id="studySavedTo" target="_blank">&mdash;</a>
+      </div>
+    </section>
+
+    <!-- ===== Output ===== -->
+    <section class="study-output panel" id="studyOutput" hidden aria-label="Generated output">
+      <div class="study-output-header">
+        <h2 class="study-output-title" id="studyOutputTitle">&middot;</h2>
+        <div class="study-output-actions">
+          <button class="btn-ghost" id="studyCopy" type="button">COPY</button>
+          <button class="btn-ghost" id="studyDownload" type="button">DOWNLOAD .md</button>
+        </div>
+      </div>
+      <pre class="study-output-body" id="studyOutputBody"></pre>
+    </section>
+
+    <!-- ===== Past outputs ===== -->
+    <section class="study-history panel" aria-label="Past outputs">
+      <h2 class="study-history-title">PREVIOUS OUTPUTS</h2>
+      <div id="studyHistory" class="study-history-list">
+        <div class="study-empty">No saved outputs yet.</div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="study.js" defer></script>
+</body>
+</html>

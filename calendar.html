@@ -103,6 +103,7 @@
     <button class="cal-tab is-active" role="tab" aria-selected="true" data-tab="day"   id="tabDay"   type="button">DAY</button>
     <button class="cal-tab"            role="tab" aria-selected="false" data-tab="week"  id="tabWeek"  type="button">WEEK</button>
     <button class="cal-tab"            role="tab" aria-selected="false" data-tab="month" id="tabMonth" type="button">MONTH</button>
+    <button class="cal-tab"            role="tab" aria-selected="false" data-tab="study" id="tabStudy" type="button">STUDY</button>
   </nav>
 
   <!-- ============ VIEWS ============ -->
@@ -151,6 +152,25 @@
         <span>FRI</span><span>SAT</span><span>SUN</span>
       </div>
       <div class="cal-month-grid" id="monthGrid"></div>
+    </div>
+  </section>
+
+  <!-- STUDY -->
+  <section class="cal-view cal-study-view" id="viewStudy" role="tabpanel" aria-labelledby="tabStudy" hidden>
+    <div class="panel cal-study-panel">
+      <div class="panel-header">
+        <h2 class="panel-title" id="studyViewTitle">&middot;</h2>
+        <div class="cal-week-controls">
+          <button class="cal-nav-btn" id="calStudyPrev" type="button" aria-label="Previous day">&lsaquo;</button>
+          <button class="cal-today-btn" id="calStudyToday" type="button">TODAY</button>
+          <button class="cal-nav-btn" id="calStudyNext" type="button" aria-label="Next day">&rsaquo;</button>
+        </div>
+        <span class="panel-tag" id="studyViewTag">&middot;</span>
+      </div>
+      <div class="cal-study-grid" id="studyGrid">
+        <!-- 6 AM → 5 PM timeline injected by calendar.js; -->
+        <!-- contains classes, gym, meals, and study blocks. -->
+      </div>
     </div>
   </section>
 

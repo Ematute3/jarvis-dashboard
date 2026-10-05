@@ -81,6 +81,19 @@
 
   // ---------- DOM helpers ----------
   function $(sel, root) { return (root || document).querySelector(sel); }
+  function flattenChildren(arr) {
+    var out = [];
+    for (var i = 0; i < arr.length; i++) {
+      var v = arr[i];
+      if (v == null) continue;
+      if (Array.isArray(v)) {
+        for (var j = 0; j < v.length; j++) out.push(v[j]);
+      } else {
+        out.push(v);
+      }
+    }
+    return out;
+  }
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
     if (attrs) {
@@ -98,9 +111,10 @@
         else node.setAttribute(k, attrs[k]);
       }
     }
-    if (children) {
-      for (var i = 0; i < children.length; i++) {
-        var c = children[i];
+    if (children != null) {
+      var list = Array.isArray(children) ? flattenChildren(children) : [children];
+      for (var i = 0; i < list.length; i++) {
+        var c = list[i];
         if (c == null) continue;
         node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
       }
@@ -121,6 +135,8 @@
     error: null,
     weekAnchor: new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate()),
     monthAnchor: new Date(NOW.getFullYear(), NOW.getMonth(), 1),
+    studyAnchor: new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate()),
+    schedule: [],     // raw schedule items for the study planner
     view: 'day',
   };
 
@@ -311,6 +327,332 @@
     }
   }
 
+  // ---------- STUDY view ----------
+  // User preferences (set via ask_user):
+  //   gym     : 6-7 AM (1 hr)
+  //   meals   : breakfast 7-8, lunch 12-1, dinner 6-7 (avoid class overlap)
+  //   window  : 6 AM - 5 PM
+  //   study   : 3 hr / day, weighted to assignment-heavy days
+  var STUDY_CONFIG = {
+    windowStart: 6,    // 6 AM
+    windowEnd:   17,   // 5 PM
+    gym:         { start: 6,  end: 7,  label: 'Gym' },
+    meals: [
+      { name: 'Breakfast', start: 7,  end: 8,  shiftMinutes: 30 },
+      { name: 'Lunch',     start: 12, end: 13, shiftMinutes: 30 },
+    ],
+    baseStudyMin:  180,  // 3 hours
+    blockMin:      60,    // study blocks are at least 60 min
+    shortBreakMin: 15,    // 15-min gap between blocks
+  };
+
+  function hhmmToMin(s) {
+    if (!s) return 0;
+    var p = s.split(':');
+    return parseInt(p[0], 10) * 60 + parseInt(p[1], 10);
+  }
+  function minToHhmm(m) {
+    var h = Math.floor(m / 60), mm = m % 60;
+    return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+  function minToAmPm(m) {
+    var h = Math.floor(m / 60), mm = m % 60;
+    var s = (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
+    return s;
+  }
+  function jsDayToMon0(jsDay) { return (jsDay + 6) % 7; } // 0=Mon..6=Sun
+
+  // Expand schedule items (day + start + end + termStart/termEnd) into
+  // concrete blocks for a given date.
+  function classesOnDate(schedule, dateISO) {
+    if (!Array.isArray(schedule)) return [];
+    var d = new Date(dateISO + 'T00:00:00');
+    var wantDow = jsDayToMon0(d.getDay());
+    var out = [];
+    schedule.forEach(function (s, idx) {
+      if (typeof s.day === 'number' && s.day !== wantDow) return;
+      var termStart = s.termStart || s.term_start;
+      var termEnd   = s.termEnd   || s.term_end;
+      if (termStart && dateISO < termStart) return;
+      if (termEnd   && dateISO > termEnd)   return;
+      var skip = Array.isArray(s.skipDates) ? s.skipDates : [];
+      if (skip.indexOf(dateISO) !== -1) return;
+      var startMin = hhmmToMin(s.start);
+      var endMin   = hhmmToMin(s.end);
+      if (endMin <= startMin) return;
+      out.push({
+        kind: 'class',
+        title: s.label || s.title || s.catalog || '(class)',
+        sub: [s.catalog, s.location].filter(Boolean).join(' \u00b7 '),
+        startMin: startMin,
+        endMin: endMin,
+        source: 'schedule',
+      });
+    });
+    return out;
+  }
+
+  function assignmentsOnDate(aggregatedEvents, dateISO) {
+    if (!Array.isArray(aggregatedEvents)) return [];
+    return aggregatedEvents.filter(function (e) {
+      return e && e.date === dateISO && e.kind === 'assignment';
+    });
+  }
+
+  // Find a free interval of `neededMin` minutes inside [wStart, wEnd] that
+  // doesn't intersect `busy` (array of {startMin, endMin}). Returns null
+  // if not enough room.
+  function findSlot(wStart, wEnd, busy, neededMin, afterMin) {
+    var slots = [];
+    var cursor = Math.max(wStart, afterMin || wStart);
+    busy.sort(function (a, b) { return a.startMin - b.startMin; });
+    for (var i = 0; i < busy.length; i++) {
+      var b = busy[i];
+      if (b.endMin <= cursor) continue;
+      if (b.startMin >= wEnd) break;
+      if (b.startMin - cursor >= neededMin) {
+        slots.push({ startMin: cursor, endMin: b.startMin });
+      }
+      cursor = Math.max(cursor, b.endMin);
+    }
+    if (wEnd - cursor >= neededMin) {
+      slots.push({ startMin: cursor, endMin: wEnd });
+    }
+    // Largest slot first.
+    slots.sort(function (a, b) { return (b.endMin - b.startMin) - (a.endMin - a.startMin); });
+    return slots[0] || null;
+  }
+
+  // Given a list of busy intervals, return a conflict-shifted version that
+  // nudges any overlapping interval forward in time.
+  function shiftOverlapping(busy, target) {
+    var placed = false;
+    var result = [];
+    for (var i = 0; i < busy.length; i++) {
+      var b = busy[i];
+      var overlap = b.startMin < target.endMin && b.endMin > target.startMin;
+      if (!overlap) { result.push(b); continue; }
+      if (!placed) {
+        // Try to fit target AFTER this busy block.
+        if (target.endMin > b.endMin && b.endMin + target.endMin - target.startMin <= target.endMin + 60) {
+          result.push({ startMin: b.endMin, endMin: b.endMin + (target.endMin - target.startMin) });
+          placed = true;
+        } else {
+          result.push(b);
+        }
+      } else {
+        result.push(b);
+      }
+    }
+    if (!placed) result.push(target);
+    result.sort(function (a, b) { return a.startMin - b.startMin; });
+    return result;
+  }
+
+  // Build the daily plan: gym, classes, meals (shifted around classes),
+  // and study blocks in remaining gaps.
+  function buildStudyPlan(dateISO, schedule, aggregatedEvents) {
+    var cfg = STUDY_CONFIG;
+    var wStart = cfg.windowStart * 60;
+    var wEnd   = cfg.windowEnd   * 60;
+
+    var classes = classesOnDate(schedule, dateISO);
+    var assigns = assignmentsOnDate(aggregatedEvents, dateISO);
+    var dueSoon = (aggregatedEvents || []).filter(function (e) {
+      if (!e || e.kind !== 'assignment' || !e.date) return false;
+      var d = new Date(e.date + 'T00:00:00');
+      var diff = (d - new Date(dateISO + 'T00:00:00')) / 86400000;
+      return diff >= 0 && diff <= 2; // due within 48h
+    });
+
+    var blocks = [];
+    var busy = [];
+
+    // 1) Gym at 6-7 AM (locked)
+    blocks.push({
+      kind: 'gym', title: 'Gym', sub: 'Workout',
+      startMin: cfg.gym.start * 60, endMin: cfg.gym.end * 60,
+    });
+    busy.push({ startMin: cfg.gym.start * 60, endMin: cfg.gym.end * 60 });
+
+    // 2) Classes
+    classes.forEach(function (c) {
+      blocks.push(c);
+      busy.push({ startMin: c.startMin, endMin: c.endMin });
+    });
+
+    // 3) Meals — try preferred slot first, shift around class overlap.
+    cfg.meals.forEach(function (m) {
+      var preferred = { startMin: m.start * 60, endMin: m.end * 60 };
+      var overlap = busy.some(function (b) {
+        return b.startMin < preferred.endMin && b.endMin > preferred.startMin;
+      });
+      if (overlap) {
+        // Try shifting the meal 30 min earlier or later (inside its hour band).
+        var shifts = [
+          { startMin: preferred.startMin - 30, endMin: preferred.endMin - 30 },
+          { startMin: preferred.startMin + 30, endMin: preferred.endMin + 30 },
+        ];
+        var placed = false;
+        for (var i = 0; i < shifts.length; i++) {
+          var s = shifts[i];
+          if (s.startMin < wStart || s.endMin > wEnd) continue;
+          var stillConflict = busy.some(function (b) {
+            return b.startMin < s.endMin && b.endMin > s.startMin;
+          });
+          if (!stillConflict) {
+            blocks.push({ kind: 'meal', title: m.name, sub: 'Eat + rest',
+              startMin: s.startMin, endMin: s.endMin });
+            busy.push(s);
+            placed = true;
+            break;
+          }
+        }
+        if (!placed) {
+          // Fall back to compressing into a 30-min quick bite
+          var quick = findSlot(wStart, wEnd, busy, 30, preferred.startMin - 60);
+          if (quick) {
+            var mealBlock = { startMin: quick.startMin, endMin: quick.startMin + 30 };
+            blocks.push({ kind: 'meal', title: m.name + ' (quick)', sub: '30-min bite',
+              startMin: mealBlock.startMin, endMin: mealBlock.endMin });
+            busy.push(mealBlock);
+          }
+        }
+      } else {
+        blocks.push({ kind: 'meal', title: m.name, sub: 'Eat + rest',
+          startMin: preferred.startMin, endMin: preferred.endMin });
+        busy.push(preferred);
+      }
+    });
+
+    // 4) Study blocks — fill remaining gaps.
+    // 3 hours base, +30 min per due-within-48h assignment, capped at 4 hours.
+    var targetStudyMin = cfg.baseStudyMin + Math.min(60, dueSoon.length * 30);
+    targetStudyMin = Math.min(240, targetStudyMin);
+
+    var placedMin = 0;
+    while (placedMin < targetStudyMin) {
+      var remaining = targetStudyMin - placedMin;
+      var wantBlock = Math.max(cfg.blockMin, Math.min(remaining, 90));
+      var slot = findSlot(wStart, wEnd, busy, wantBlock);
+      if (!slot) {
+        // Try smaller (45 min) and again (15 min) before giving up.
+        slot = findSlot(wStart, wEnd, busy, Math.min(45, remaining));
+        if (!slot) slot = findSlot(wStart, wEnd, busy, Math.min(15, remaining));
+        if (!slot) break;
+      }
+      // Trim to remaining so we don't overshoot the daily target.
+      var blockMin = slot.endMin - slot.startMin;
+      if (placedMin + blockMin > targetStudyMin) {
+        blockMin = targetStudyMin - placedMin;
+        slot.endMin = slot.startMin + blockMin;
+        if (blockMin < 15) break; // too tiny to be useful
+      }
+      var title = (dueSoon.length > 0 && placedMin === 0)
+        ? 'Study \u00b7 ' + dueSoon[0].title.slice(0, 32)
+        : 'Study block';
+      blocks.push({
+        kind: 'study',
+        title: title,
+        sub: blockMin + ' min focus',
+        startMin: slot.startMin,
+        endMin: slot.endMin,
+      });
+      busy.push(slot);
+      placedMin += blockMin;
+    }
+
+    blocks.sort(function (a, b) { return a.startMin - b.startMin; });
+    return { date: dateISO, blocks: blocks, studyMin: placedMin, dueSoonCount: dueSoon.length };
+  }
+
+  // Render the study timeline for state.studyAnchor.
+  function renderStudyView() {
+    var anchor = state.studyAnchor || NOW;
+    var dateISO = isoDate(anchor);
+
+    // Pull schedule + events fresh so the plan reflects current data.
+    var schedule = window.__JARVIS_SCHEDULE__ || [];
+    var events   = window.__JARVIS_CALENDAR__ && window.__JARVIS_CALENDAR__.events || [];
+
+    var plan = buildStudyPlan(dateISO, schedule, events);
+
+    $('#studyViewTitle').textContent =
+      'STUDY PLAN \u00b7 ' + formatLongDate(anchor).toUpperCase();
+    $('#studyViewTag').textContent =
+      plan.studyMin + ' MIN STUDY \u00b7 ' +
+      plan.dueSoonCount + ' DUE \u00d7 48H \u00b7 ' +
+      plan.blocks.filter(function (b) { return b.kind === 'class'; }).length + ' CLASSES';
+
+    var grid = $('#studyGrid');
+    grid.innerHTML = '';
+    var cfg = STUDY_CONFIG;
+    var nowMin = (function () {
+      var d = new Date();
+      return d.getHours() * 60 + d.getMinutes();
+    })();
+
+    for (var h = cfg.windowStart; h < cfg.windowEnd; h++) {
+      var hourStart = h * 60;
+      var hourEnd   = (h + 1) * 60;
+      var label = ((h % 12) || 12) + (h < 12 ? ' AM' : ' PM');
+
+      var cell = el('div', { class: 'cal-study-hour', text: label });
+      grid.appendChild(cell);
+
+      var block = el('div', {
+        class: 'cal-study-cell' + ((nowMin >= hourStart && nowMin < hourEnd && dateISO === todayISO()) ? ' is-now' : ''),
+        dataset: { hour: String(h) },
+      });
+
+      // Place any study blocks whose startMin falls inside this hour.
+      plan.blocks.forEach(function (b) {
+        if (b.startMin >= hourStart && b.startMin < hourEnd) {
+          var dur = b.endMin - b.startMin;
+          block.appendChild(el('article', {
+            class: 'cal-study-block kind-' + b.kind,
+            dataset: { kind: b.kind, start: minToHhmm(b.startMin), end: minToHhmm(b.endMin) },
+          }, [
+            el('span', { class: 'cat-dot', text: '' }),
+            el('div', null, [
+              el('div', { class: 'cal-block-title', text: b.title }),
+              b.sub ? el('div', { class: 'cal-block-sub', text: b.sub }) : null,
+            ]),
+            el('span', { class: 'cal-block-time', text: minToHhmm(b.startMin) + '\u2013' + minToHhmm(b.endMin) + ' \u00b7 ' + dur + 'm' }),
+          ]));
+        }
+      });
+
+      grid.appendChild(block);
+    }
+
+    // Summary footer
+    var summary = el('div', { class: 'cal-study-summary' });
+    summary.appendChild(el('span', null, [
+      document.createTextNode('SCHEDULED '),
+      el('b', { text: plan.blocks.filter(function (b) { return b.kind === 'class'; }).length + ' classes' }),
+    ]));
+    summary.appendChild(el('span', null, [
+      document.createTextNode('STUDY '),
+      el('b', { text: Math.round(plan.studyMin / 60 * 10) / 10 + ' hrs' }),
+    ]));
+    summary.appendChild(el('span', null, [
+      document.createTextNode('GYM '),
+      el('b', { text: '1 hr' }),
+    ]));
+    summary.appendChild(el('span', null, [
+      document.createTextNode('DUE SOON '),
+      el('b', { text: plan.dueSoonCount + ' assignments' }),
+    ]));
+    // Remove any prior summary before appending the new one so re-clicking
+    // the STUDY tab doesn't stack duplicates.
+    var existing = document.getElementById('studySummary');
+    if (existing) existing.parentNode.removeChild(existing);
+    summary.id = 'studySummary';
+    grid.parentNode.appendChild(summary);
+    updateRangeLabel();
+  }
+
   // ---------- Tab switching ----------
   function bindTabs() {
     var tabs  = document.querySelectorAll('.cal-tab');
@@ -318,6 +660,7 @@
       day:   $('#viewDay'),
       week:  $('#viewWeek'),
       month: $('#viewMonth'),
+      study: $('#viewStudy'),
     };
     tabs.forEach(function (tab) {
       tab.addEventListener('click', function () {
@@ -335,6 +678,7 @@
           if (on) v.removeAttribute('hidden'); else v.setAttribute('hidden', '');
           v.setAttribute('aria-hidden', on ? 'false' : 'true');
         });
+        if (name === 'study') renderStudyView();
       });
     });
   }
@@ -383,6 +727,20 @@
     if (mn) mn.addEventListener('click', function () {
       state.monthAnchor = addMonths(state.monthAnchor, 1);
       renderMonthView(state.events, state.monthAnchor);
+    });
+
+    var sp = $('#calStudyPrev'), st = $('#calStudyToday'), sn = $('#calStudyNext');
+    if (sp) sp.addEventListener('click', function () {
+      state.studyAnchor = addDays(state.studyAnchor, -1);
+      renderStudyView();
+    });
+    if (st) st.addEventListener('click', function () {
+      state.studyAnchor = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate());
+      renderStudyView();
+    });
+    if (sn) sn.addEventListener('click', function () {
+      state.studyAnchor = addDays(state.studyAnchor, 1);
+      renderStudyView();
     });
   }
 
@@ -581,6 +939,15 @@
       state.events = loaded.events;
       state.error = loaded.error;
 
+      // Pull schedule so the study planner can fill gaps around classes.
+      try {
+        var schedResp = await fetch('/api/schedule', { credentials: 'same-origin' });
+        if (schedResp.ok) {
+          var sd = await schedResp.json();
+          state.schedule = Array.isArray(sd) ? sd : (sd.schedule || sd.items || []);
+        }
+      } catch (_) { /* non-fatal for views that don't need it */ }
+
       var statusEl = $('#calSourceStatus');
       if (statusEl) statusEl.textContent = loaded.error ? 'OFFLINE' : 'AGGREGATED';
       var noticeEl = $('#calNotice');
@@ -596,10 +963,13 @@
         now:    NOW.toISOString(),
         source: loaded.error ? 'unavailable' : 'aggregated',
       };
+      window.__JARVIS_SCHEDULE__ = state.schedule;
 
       renderDayView(state.events, NOW);
       renderWeekView(state.events, state.weekAnchor);
       renderMonthView(state.events, state.monthAnchor);
+      // Note: study view is rendered lazily on tab click (avoids early
+      // work before data settles).
     } catch (err) {
       // Render whatever state we have so the user sees the tabs even when
       // data loading fails; surface the error so it isn't silently dropped.

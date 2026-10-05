@@ -523,6 +523,98 @@
 }
 .cal-notice[hidden] { display: none; }
 
+/* -------- STUDY view: 6 AM - 5 PM daily planner -------- */
+.cal-study-panel { padding: 0; }
+.cal-study-grid {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  background: var(--surface);
+  border-top: 1px solid var(--c-line-soft);
+}
+.cal-study-hour {
+  border-right: 1px dashed var(--c-line-soft);
+  border-bottom: 1px solid var(--c-line-soft);
+  padding: 8px 10px 6px 10px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--c-ink-dim);
+  text-align: right;
+  min-height: 56px;
+}
+.cal-study-cell {
+  border-bottom: 1px solid var(--c-line-soft);
+  padding: 6px 10px;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+.cal-study-cell.is-now {
+  background: rgba(0, 229, 255, 0.06);
+  box-shadow: inset 3px 0 0 var(--c-cyan);
+}
+.cal-study-block {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: var(--r-2);
+  background: var(--surface);
+  border-left: 2px solid var(--c-cyan);
+  font-family: var(--f-body);
+  font-size: 12px;
+  color: var(--c-ink);
+  letter-spacing: 0.02em;
+}
+.cal-study-block .cat-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.cal-study-block.kind-class    { border-left-color: var(--c-cyan);    background: rgba(0, 229, 255, 0.08); }
+.cal-study-block.kind-gym      { border-left-color: #69F0AE;          background: rgba(105, 240, 174, 0.08); }
+.cal-study-block.kind-meal     { border-left-color: var(--c-blue);    background: rgba(41, 121, 255, 0.06); }
+.cal-study-block.kind-study    { border-left-color: var(--c-orange-soft); background: rgba(255, 183, 77, 0.10); }
+.cal-study-block.kind-break    { border-left-color: var(--c-line);    background: rgba(74, 96, 117, 0.04); }
+.cal-study-block .cal-block-time {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--c-ink-dim);
+  white-space: nowrap;
+}
+.cal-study-block .cal-block-title {
+  font-weight: 500;
+  color: var(--c-ink);
+}
+.cal-study-block .cal-block-sub {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--c-ink-faint);
+  margin-top: 2px;
+}
+.cal-study-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--c-line-soft);
+  background: var(--surface-soft);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--c-ink-dim);
+}
+.cal-study-summary b {
+  color: var(--c-ink);
+  margin-right: 4px;
+  font-weight: 600;
+}
+
 /* -------- Day-detail modal -------- */
 .cal-day-modal { max-width: 560px; width: calc(100% - 24px); max-height: 86vh; display: flex; flex-direction: column; }
 .cal-day-sub { font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.2em; color: var(--c-cyan); margin-top: 4px; }
